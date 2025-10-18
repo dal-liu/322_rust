@@ -1,6 +1,5 @@
-pub mod l1;
-
-enum Register {
+#[derive(Debug)]
+pub enum Register {
     RAX,
     RBX,
     RBP,
@@ -19,31 +18,36 @@ enum Register {
     RSP,
 }
 
-enum Value {
+#[derive(Debug)]
+pub enum Value {
     Reg(Register),
     Imm(i64),
     Label(String),
 }
 
-enum ArithmeticOp {
+#[derive(Debug)]
+pub enum ArithmeticOp {
     PlusEq,
     MinusEq,
     MultEq,
     AndEq,
 }
 
-enum ShiftOp {
+#[derive(Debug)]
+pub enum ShiftOp {
     LeftShiftEq,
     RightShiftEq,
 }
 
-enum CompareOp {
+#[derive(Debug)]
+pub enum CompareOp {
     Less,
     LessEq,
     Equal,
 }
 
-enum Instruction {
+#[derive(Debug)]
+pub enum Instruction {
     AssignInst {
         lhs: Register,
         rhs: Value,
@@ -114,14 +118,36 @@ enum Instruction {
     },
 }
 
-struct Function {
+#[derive(Debug)]
+pub struct Function {
     name: String,
     args: i64,
     locals: i64,
     instructions: Vec<Instruction>,
 }
 
-struct Program {
-    entryPointLabel: String,
+impl Function {
+    pub fn new(name: String, args: i64, locals: i64, instructions: Vec<Instruction>) -> Function {
+        Self {
+            name,
+            args,
+            locals,
+            instructions,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Program {
+    entry_point: String,
     functions: Vec<Function>,
+}
+
+impl Program {
+    pub fn new(entry_point: String, functions: Vec<Function>) -> Program {
+        Self {
+            entry_point,
+            functions,
+        }
+    }
 }

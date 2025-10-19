@@ -6,5 +6,5 @@ mod parser;
 fn main() {
     let args: Vec<String> = env::args().collect();
     let program = parser::parse_file(&args[1]);
-    dbg!(&program);
+    println!("{}", program.unwrap());
 }

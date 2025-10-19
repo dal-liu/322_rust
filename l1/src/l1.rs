@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, Clone)]
 pub enum Register {
     RAX,
@@ -18,12 +20,47 @@ pub enum Register {
     RSP,
 }
 
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let register = match self {
+            Register::RAX => "rax",
+            Register::RBX => "rbx",
+            Register::RBP => "rbp",
+            Register::R10 => "r10",
+            Register::R11 => "r11",
+            Register::R12 => "r12",
+            Register::R13 => "r13",
+            Register::R14 => "r14",
+            Register::R15 => "r15",
+            Register::RDI => "rdi",
+            Register::RSI => "rsi",
+            Register::RDX => "rdx",
+            Register::R8 => "r8",
+            Register::R9 => "r9",
+            Register::RCX => "rcx",
+            Register::RSP => "rsp",
+        };
+        write!(f, "{}", register)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Register(Register),
     Number(i64),
     Label(String),
-    FunctionCallee(String),
+    Function(String),
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Register(r) => write!(f, "{}", r),
+            Value::Number(n) => write!(f, "{}", n),
+            Value::Label(s) => write!(f, ":{}", s),
+            Value::Function(s) => write!(f, "@{}", s),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -34,10 +71,32 @@ pub enum ArithmeticOp {
     AndEq,
 }
 
+impl fmt::Display for ArithmeticOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let op = match self {
+            ArithmeticOp::PlusEq => "+=",
+            ArithmeticOp::MinusEq => "-=",
+            ArithmeticOp::MultEq => "*=",
+            ArithmeticOp::AndEq => "&=",
+        };
+        write!(f, "{}", op)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ShiftOp {
     LeftShiftEq,
     RightShiftEq,
+}
+
+impl fmt::Display for ShiftOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let op = match self {
+            ShiftOp::LeftShiftEq => "<<=",
+            ShiftOp::RightShiftEq => ">>=",
+        };
+        write!(f, "{}", op)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +104,17 @@ pub enum CompareOp {
     Less,
     LessEq,
     Equal,
+}
+
+impl fmt::Display for CompareOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let op = match self {
+            CompareOp::Less => "<",
+            CompareOp::LessEq => "<=",
+            CompareOp::Equal => "=",
+        };
+        write!(f, "{}", op)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +189,60 @@ pub enum Instruction {
     },
 }
 
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Instruction::Assign { lhs, rhs } => write!(f, "{} <- {}", lhs, rhs),
+            Instruction::Load { dst, src, offset } => {
+                write!(f, "{} <- mem {} {}", dst, src, offset)
+            }
+            Instruction::Store { dst, offset, src } => {
+                write!(f, "mem {} {} <- {}", dst, offset, src)
+            }
+            Instruction::Arithmetic { lhs, op, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
+            Instruction::Shift { lhs, op, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
+            Instruction::StoreArithmetic {
+                dst,
+                offset,
+                op,
+                src,
+            } => write!(f, "mem {} {} {} {}", dst, offset, op, src),
+            Instruction::LoadArithmetic {
+                dst,
+                op,
+                src,
+                offset,
+            } => write!(f, "{} {} mem {} {}", dst, op, src, offset),
+            Instruction::Compare { dst, lhs, op, rhs } => {
+                write!(f, "{} <- {} {} {}", dst, lhs, op, rhs)
+            }
+            Instruction::CJump {
+                lhs,
+                op,
+                rhs,
+                label,
+            } => write!(f, "cjump {} {} {} :{}", lhs, op, rhs, label),
+            Instruction::Label(s) => write!(f, ":{}", s),
+            Instruction::Goto(s) => write!(f, "goto :{}", s),
+            Instruction::Return => write!(f, "return"),
+            Instruction::Call { callee, args } => write!(f, "call {} {}", callee, args),
+            Instruction::Print => write!(f, "call print 1"),
+            Instruction::Input => write!(f, "call input 0"),
+            Instruction::Allocate => write!(f, "call allocate 2"),
+            Instruction::TupleError => write!(f, "call tuple-error 3"),
+            Instruction::TensorError(n) => write!(f, "call tensor-error {}", n),
+            Instruction::Increment(r) => write!(f, "{}++", r),
+            Instruction::Decrement(r) => write!(f, "{}--", r),
+            Instruction::LEA {
+                dst,
+                src,
+                offset,
+                scale,
+            } => write!(f, "{} @ {} {} {}", dst, src, offset, scale),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Function {
     name: String,
@@ -138,6 +262,19 @@ impl Function {
     }
 }
 
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "(@{}", self.name)?;
+        writeln!(f, "\t{} {}", self.args, self.locals)?;
+
+        for inst in &self.instructions {
+            writeln!(f, "\t{}", inst)?;
+        }
+
+        write!(f, ")")
+    }
+}
+
 #[derive(Debug)]
 pub struct Program {
     entry_point: String,
@@ -150,5 +287,18 @@ impl Program {
             entry_point,
             functions,
         }
+    }
+}
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "(@{}", self.entry_point)?;
+
+        for func in &self.functions {
+            writeln!(f, "{}", func)?;
+            writeln!(f)?;
+        }
+
+        write!(f, ")")
     }
 }

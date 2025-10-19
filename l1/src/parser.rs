@@ -59,7 +59,7 @@ fn value<'src>() -> impl Parser<'src, &'src str, Value> {
     choice((
         register().map(|reg| Value::Register(reg)),
         number().map(|num| Value::Number(num)),
-        function_name().map(|callee| Value::FunctionCallee(callee)),
+        function_name().map(|callee| Value::Function(callee)),
         label_name().map(|label| Value::Label(label)),
     ))
     .padded_by(separators())
@@ -85,8 +85,8 @@ fn shift_op<'src>() -> impl Parser<'src, &'src str, ShiftOp> {
 
 fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp> {
     choice((
-        just("<").to(CompareOp::Less),
         just("<=").to(CompareOp::LessEq),
+        just("<").to(CompareOp::Less),
         just("=").to(CompareOp::Equal),
     ))
     .padded_by(separators())
@@ -112,7 +112,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
 
     let store = mem
         .ignore_then(register())
-        .then(text::int(10).from_str::<i64>().unwrapped())
+        .then(number())
         .then_ignore(arrow)
         .then(value())
         .map(|((dst, offset), src)| Instruction::Store { dst, offset, src });
@@ -299,6 +299,6 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program> {
 }
 
 pub fn parse_file<'a>(file_name: &'a str) -> Option<Program> {
-    let contents = fs::read_to_string(file_name).unwrap();
-    program().parse(&contents).into_output()
+    let file_input = fs::read_to_string(file_name).unwrap();
+    program().parse(&file_input).into_output()
 }

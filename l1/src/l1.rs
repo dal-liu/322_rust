@@ -136,10 +136,6 @@ impl Function {
             instructions,
         }
     }
-
-    pub fn add_instruction(&mut self, instruction: Instruction) {
-        self.instructions.push(instruction);
-    }
 }
 
 #[derive(Debug)]
@@ -154,9 +150,5 @@ impl Program {
             entry_point,
             functions,
         }
-    }
-
-    pub fn add_function(&mut self, function: Function) {
-        self.functions.push(function);
     }
 }

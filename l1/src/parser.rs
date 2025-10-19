@@ -243,6 +243,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
         });
 
     choice((
+        compare,
         assign,
         load,
         store,
@@ -250,7 +251,6 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
         shift,
         store_arithmetic,
         load_arithmetic,
-        compare,
         cjump,
         label_inst,
         goto,
@@ -269,13 +269,36 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
     .padded()
 }
 
-/* fn parser<'src>() -> impl Parser<'src, &'src str, ()> {
-    empty()
-} */
+fn function<'src>() -> impl Parser<'src, &'src str, Function> {
+    just('(')
+        .padded_by(comment().repeated())
+        .padded()
+        .ignore_then(function_name().padded_by(comment().repeated()).padded())
+        .then(number().padded_by(comment().repeated()).padded())
+        .then(number().padded_by(comment().repeated()).padded())
+        .then(
+            instruction()
+                .repeated()
+                .at_least(1)
+                .collect::<Vec<Instruction>>(),
+        )
+        .then_ignore(just(')').padded_by(comment().repeated()).padded())
+        .map(|(((name, args), locals), instructions)| {
+            Function::new(name, args, locals, instructions)
+        })
+}
 
-pub fn parse_file<'a>(file_name: &'a str) -> Program {
+fn program<'src>() -> impl Parser<'src, &'src str, Program> {
+    just('(')
+        .padded_by(comment().repeated())
+        .padded()
+        .ignore_then(function_name().padded_by(comment().repeated()).padded())
+        .then(function().repeated().at_least(1).collect::<Vec<Function>>())
+        .then_ignore(just(')').padded_by(comment().repeated()).padded())
+        .map(|(entry_point, functions)| Program::new(entry_point, functions))
+}
+
+pub fn parse_file<'a>(file_name: &'a str) -> Option<Program> {
     let contents = fs::read_to_string(file_name).unwrap();
-    let result = instruction().parse(&contents);
-    dbg!(result);
-    Program::new(String::new(), Vec::new())
+    program().parse(&contents).into_output()
 }

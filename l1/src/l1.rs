@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Register {
     RAX,
     RBX,
@@ -18,14 +18,15 @@ pub enum Register {
     RSP,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
-    Reg(Register),
-    Imm(i64),
+    Register(Register),
+    Number(i64),
     Label(String),
+    FunctionCallee(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ArithmeticOp {
     PlusEq,
     MinusEq,
@@ -33,84 +34,84 @@ pub enum ArithmeticOp {
     AndEq,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ShiftOp {
     LeftShiftEq,
     RightShiftEq,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CompareOp {
     Less,
     LessEq,
     Equal,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Instruction {
-    AssignInst {
+    Assign {
         lhs: Register,
         rhs: Value,
     },
-    LoadInst {
+    Load {
         dst: Register,
         src: Register,
         offset: i64,
     },
-    StoreInst {
+    Store {
         dst: Register,
         offset: i64,
-        src: Register,
+        src: Value,
     },
-    ArithmeticInst {
+    Arithmetic {
         lhs: Register,
         op: ArithmeticOp,
         rhs: Value,
     },
-    ShiftInst {
+    Shift {
         lhs: Register,
         op: ShiftOp,
         rhs: Value,
     },
-    StoreArithmeticInst {
+    StoreArithmetic {
         dst: Register,
         offset: i64,
         op: ArithmeticOp,
         src: Value,
     },
-    LoadArithmeticInst {
+    LoadArithmetic {
         dst: Register,
         op: ArithmeticOp,
         src: Register,
         offset: i64,
     },
-    CompareInst {
+    Compare {
         dst: Register,
         lhs: Value,
         op: CompareOp,
         rhs: Value,
     },
-    CJumpInst {
+    CJump {
         lhs: Value,
         op: CompareOp,
         rhs: Value,
         label: String,
     },
-    LabelInst(String),
-    GotoInst(String),
-    ReturnInst,
-    CallInst {
+    Label(String),
+    Goto(String),
+    Return,
+    Call {
         callee: Value,
         args: i64,
     },
-    PrintInst,
-    InputInst,
-    AllocateInst,
-    TupleErrorInst,
-    TensorErrorInst(u8),
-    IncrementInst(Register),
-    DecrementInst(Register),
-    LEAInst {
+    Print,
+    Input,
+    Allocate,
+    TupleError,
+    TensorError(u8),
+    Increment(Register),
+    Decrement(Register),
+    LEA {
         dst: Register,
         src: Register,
         offset: Register,
@@ -135,6 +136,10 @@ impl Function {
             instructions,
         }
     }
+
+    pub fn add_instruction(&mut self, instruction: Instruction) {
+        self.instructions.push(instruction);
+    }
 }
 
 #[derive(Debug)]
@@ -149,5 +154,9 @@ impl Program {
             entry_point,
             functions,
         }
+    }
+
+    pub fn add_function(&mut self, function: Function) {
+        self.functions.push(function);
     }
 }

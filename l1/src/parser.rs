@@ -102,7 +102,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
     let assign = register()
         .then_ignore(arrow)
         .then(value())
-        .map(|(lhs, rhs)| Instruction::Assign { lhs, rhs });
+        .map(|(dst, src)| Instruction::Assign { dst, src });
 
     let load = register()
         .then_ignore(arrow.then_ignore(mem))
@@ -283,8 +283,11 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function> {
                 .collect::<Vec<Instruction>>(),
         )
         .then_ignore(just(')').padded_by(comment().repeated()).padded())
-        .map(|(((name, args), locals), instructions)| {
-            Function::new(name, args, locals, instructions)
+        .map(|(((name, args), locals), instructions)| Function {
+            name,
+            args,
+            locals,
+            instructions,
         })
 }
 
@@ -295,7 +298,10 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program> {
         .ignore_then(function_name().padded_by(comment().repeated()).padded())
         .then(function().repeated().at_least(1).collect::<Vec<Function>>())
         .then_ignore(just(')').padded_by(comment().repeated()).padded())
-        .map(|(entry_point, functions)| Program::new(entry_point, functions))
+        .map(|(entry_point, functions)| Program {
+            entry_point,
+            functions,
+        })
 }
 
 pub fn parse_file<'a>(file_name: &'a str) -> Option<Program> {

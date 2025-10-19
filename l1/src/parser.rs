@@ -209,7 +209,12 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
 
     let tensor_error = call_keyword
         .ignore_then(just("tensor-error").padded_by(separators()))
-        .ignore_then(text::int(10).from_str::<u8>().unwrapped())
+        .ignore_then(
+            text::int(10)
+                .from_str::<u8>()
+                .unwrapped()
+                .filter(|&n| n == 1 || n == 3 || n == 4),
+        )
         .map(|args| Instruction::TensorError(args));
 
     let increment = register()
@@ -224,7 +229,12 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
         .then_ignore(just('@').padded_by(separators()))
         .then(register())
         .then(register())
-        .then(text::int(10).from_str::<u8>().unwrapped())
+        .then(
+            text::int(10)
+                .from_str::<u8>()
+                .unwrapped()
+                .filter(|&n| n == 1 || n == 2 || n == 4 || n == 8),
+        )
         .map(|(((dst, src), offset), scale)| Instruction::LEA {
             dst,
             src,

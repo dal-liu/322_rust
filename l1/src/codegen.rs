@@ -18,7 +18,7 @@ impl CodeGenerator {
         writeln!(
             self.stream,
             "\t.text\n\
-             \tglobl go\n\
+             \t.globl go\n\
              go:\n\
              \tpushq %rbx\n\
              \tpushq %rbp\n\
@@ -48,7 +48,7 @@ impl CodeGenerator {
         writeln!(self.stream, "_{}:", &func.name)?;
 
         if func.locals > 0 {
-            writeln!(self.stream, "\tsubq ${}", func.locals * 8)?;
+            writeln!(self.stream, "\tsubq ${}, %rsp", func.locals * 8)?;
         }
 
         for inst in &func.instructions {
@@ -66,7 +66,7 @@ impl CodeGenerator {
                         return Ok(());
                     }
                 }
-                writeln!(self.stream, "\tmovq {}, {}", self.format_value(src), dst)
+                writeln!(self.stream, "\tmovq {}, %{}", self.format_value(src), dst)
             }
             Instruction::Load { dst, src, offset } => {
                 writeln!(self.stream, "\tmovq {}(%{}), %{}", offset, src, dst)
@@ -156,8 +156,8 @@ impl CodeGenerator {
                         CompareOp::Equal => "sete",
                     };
                     let dst_8_bit = self.format_register_8_bit(dst);
-                    writeln!(self.stream, "\t{} %{}", cmp, dst_8_bit)?;
-                    writeln!(self.stream, "\tmovzbq %{}, %{}", dst_8_bit, dst)
+                    writeln!(self.stream, "\t{} {}", cmp, dst_8_bit)?;
+                    writeln!(self.stream, "\tmovzbq {}, %{}", dst_8_bit, dst)
                 } else {
                     writeln!(
                         self.stream,
@@ -171,8 +171,8 @@ impl CodeGenerator {
                         CompareOp::Equal => "sete",
                     };
                     let dst_8_bit = self.format_register_8_bit(dst);
-                    writeln!(self.stream, "\t{} %{}", cmp, dst_8_bit)?;
-                    writeln!(self.stream, "\tmovzbq %{}, %{}", dst_8_bit, dst)
+                    writeln!(self.stream, "\t{} {}", cmp, dst_8_bit)?;
+                    writeln!(self.stream, "\tmovzbq {}, %{}", dst_8_bit, dst)
                 }
             }
             Instruction::CJump {

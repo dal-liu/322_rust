@@ -1,11 +1,16 @@
-use std::env;
+use clap::Parser;
 
 mod codegen;
 mod l1;
 mod parser;
 
+#[derive(Parser)]
+struct Cli {
+    source: String,
+}
+
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let program = parser::parse_file(&args[1]);
-    codegen::generate_code(&program.unwrap()).unwrap();
+    let cli = Cli::parse();
+    let program = parser::parse_file(&cli.source).unwrap();
+    codegen::generate_code(&program).unwrap();
 }

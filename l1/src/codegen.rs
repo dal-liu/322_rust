@@ -1,5 +1,4 @@
 use crate::l1::*;
-use std::fmt::format;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 
@@ -19,22 +18,22 @@ impl CodeGenerator {
         writeln!(
             self.stream,
             "\t.text\n\
-         \tglobl go\n\
-         go:\n\
-         \tpushq %rbx\n\
-         \tpushq %rbp\n\
-         \tpushq %r12\n\
-         \tpushq %r13\n\
-         \tpushq %r14\n\
-         \tpushq %r15\n\
-         \tcall _{}\n\
-         \tpopq %r15\n\
-         \tpopq %r14\n\
-         \tpopq %r13\n\
-         \tpopq %r12\n\
-         \tpopq %rbp\n\
-         \tpopq %rbx\n\
-         \tretq",
+             \tglobl go\n\
+             go:\n\
+             \tpushq %rbx\n\
+             \tpushq %rbp\n\
+             \tpushq %r12\n\
+             \tpushq %r13\n\
+             \tpushq %r14\n\
+             \tpushq %r15\n\
+             \tcall _{}\n\
+             \tpopq %r15\n\
+             \tpopq %r14\n\
+             \tpopq %r13\n\
+             \tpopq %r12\n\
+             \tpopq %rbp\n\
+             \tpopq %rbx\n\
+             \tretq",
             &prog.entry_point
         )?;
 

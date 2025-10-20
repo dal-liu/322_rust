@@ -20,9 +20,9 @@ pub enum Register {
     RSP,
 }
 
-impl Register {
-    pub fn name(&self) -> &'static str {
-        match self {
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let reg = match self {
             Register::RAX => "rax",
             Register::RBX => "rbx",
             Register::RBP => "rbp",
@@ -39,34 +39,8 @@ impl Register {
             Register::R9 => "r9",
             Register::RCX => "rcx",
             Register::RSP => "rsp",
-        }
-    }
-
-    pub fn name_8(&self) -> &'static str {
-        match self {
-            Register::RAX => "al",
-            Register::RBX => "bl",
-            Register::RBP => "bpl",
-            Register::R10 => "r10b",
-            Register::R11 => "r11b",
-            Register::R12 => "r12b",
-            Register::R13 => "r13b",
-            Register::R14 => "r14b",
-            Register::R15 => "r15b",
-            Register::RDI => "dil",
-            Register::RSI => "sil",
-            Register::RDX => "dl",
-            Register::R8 => "r8b",
-            Register::R9 => "r9b",
-            Register::RCX => "cl",
-            Register::RSP => panic!("rsp cannot be 8 bit"),
-        }
-    }
-}
-
-impl fmt::Display for Register {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name())
+        };
+        write!(f, "{}", reg)
     }
 }
 
@@ -218,7 +192,7 @@ pub enum Instruction {
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Instruction::Assign { dst: lhs, src: rhs } => write!(f, "{} <- {}", lhs, rhs),
+            Instruction::Assign { dst, src } => write!(f, "{} <- {}", dst, src),
             Instruction::Load { dst, src, offset } => {
                 write!(f, "{} <- mem {} {}", dst, src, offset)
             }
@@ -248,17 +222,17 @@ impl fmt::Display for Instruction {
                 rhs,
                 label,
             } => write!(f, "cjump {} {} {} :{}", lhs, op, rhs, label),
-            Instruction::Label(s) => write!(f, ":{}", s),
-            Instruction::Goto(s) => write!(f, "goto :{}", s),
+            Instruction::Label(label) => write!(f, ":{}", label),
+            Instruction::Goto(label) => write!(f, "goto :{}", label),
             Instruction::Return => write!(f, "return"),
             Instruction::Call { callee, args } => write!(f, "call {} {}", callee, args),
             Instruction::Print => write!(f, "call print 1"),
             Instruction::Input => write!(f, "call input 0"),
             Instruction::Allocate => write!(f, "call allocate 2"),
             Instruction::TupleError => write!(f, "call tuple-error 3"),
-            Instruction::TensorError(n) => write!(f, "call tensor-error {}", n),
-            Instruction::Increment(r) => write!(f, "{}++", r),
-            Instruction::Decrement(r) => write!(f, "{}--", r),
+            Instruction::TensorError(args) => write!(f, "call tensor-error {}", args),
+            Instruction::Increment(reg) => write!(f, "{}++", reg),
+            Instruction::Decrement(reg) => write!(f, "{}--", reg),
             Instruction::LEA {
                 dst,
                 src,

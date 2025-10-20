@@ -15,7 +15,7 @@ go:
 	popq %rbp
 	popq %rbx
 	retq
-_main
+_main:
 	subq $8
 	movq %r12, 0(%rsp)
 	movq $_initArray_return, -8(%rsp)
@@ -36,7 +36,7 @@ _printArray_return:
 	movq 0(%rsp), %r12
 	addq $8, %rsp
 	retq
-_initArray
+_initArray:
 	subq $24
 	movq %r12, 0(%rsp)
 	movq %r13, 8(%rsp)
@@ -67,7 +67,7 @@ _initArray_exit:
 	movq 16(%rsp), %r14
 	addq $24, %rsp
 	retq
-_sortArray
+_sortArray:
 	movq 0(%rdi), %r10
 	subq $1, %r10
 	salq $1, %r10
@@ -99,7 +99,7 @@ _sortArray_exit2:
 	jmp _sortArray_loop1
 _sortArray_exit1:
 	retq
-_printArray
+_printArray:
 	subq $16
 	movq %r12, 0(%rsp)
 	movq %r13, 8(%rsp)

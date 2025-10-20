@@ -45,7 +45,7 @@ impl CodeGenerator {
     }
 
     fn emit_function(&mut self, func: &Function) -> io::Result<()> {
-        writeln!(self.stream, "_{}", &func.name)?;
+        writeln!(self.stream, "_{}:", &func.name)?;
 
         if func.locals > 0 {
             writeln!(self.stream, "\tsubq ${}", func.locals * 8)?;

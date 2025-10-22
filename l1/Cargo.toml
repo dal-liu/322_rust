@@ -8,4 +8,4 @@ chumsky = "0.11.1"
 
 [[bin]]
 name = "L1"
-path = "src/compiler.rs"
+path = "src/main.rs"

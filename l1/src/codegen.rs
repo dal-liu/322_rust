@@ -2,13 +2,13 @@ use crate::l1::*;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 
-pub struct CodeGenerator {
+struct CodeGenerator {
     stream: BufWriter<File>,
 }
 
 impl CodeGenerator {
-    pub fn new(file_name: &str) -> io::Result<Self> {
-        let file = File::create(file_name)?;
+    pub fn new() -> io::Result<Self> {
+        let file = File::create("prog.S")?;
         Ok(Self {
             stream: BufWriter::new(file),
         })
@@ -120,7 +120,7 @@ impl CodeGenerator {
                 };
                 writeln!(
                     self.stream,
-                    "\t{} %{}, {}({})",
+                    "\t{} {}, {}(%{})",
                     arith,
                     self.format_value(src),
                     offset,
@@ -138,7 +138,7 @@ impl CodeGenerator {
                     ArithmeticOp::MinusEq => "subq",
                     _ => panic!("load arithmetic invalid op"),
                 };
-                writeln!(self.stream, "\t{} {}(%{}), {}", arith, offset, src, dst)
+                writeln!(self.stream, "\t{} {}(%{}), %{}", arith, offset, src, dst)
             }
             Instruction::Compare { dst, lhs, op, rhs } => {
                 if let (Value::Number(a), Value::Number(b)) = (lhs, rhs) {
@@ -225,7 +225,7 @@ impl CodeGenerator {
                 writeln!(self.stream, "\tretq")
             }
             Instruction::Call { callee, args } => {
-                writeln!(self.stream, "\tsubq ${}, %rsp", (args - 6).max(0) + 8)?;
+                writeln!(self.stream, "\tsubq ${}, %rsp", (args - 6).max(0) * 8 + 8)?;
                 let name = match callee {
                     Value::Register(reg) => format!("*%{}", reg),
                     Value::Function(label) => format!("_{}", label),
@@ -267,8 +267,8 @@ impl CodeGenerator {
         match val {
             Value::Register(r) => format!("%{}", r),
             Value::Number(n) => format!("${}", n),
-            Value::Label(s) => format!("${}", s),
-            Value::Function(s) => format!("_{}", s),
+            Value::Label(s) => format!("$_{}", s),
+            Value::Function(s) => format!("$_{}", s),
         }
     }
 
@@ -276,8 +276,8 @@ impl CodeGenerator {
         match val {
             Value::Register(r) => self.format_register_8_bit(r).into(),
             Value::Number(n) => format!("${}", n),
-            Value::Label(s) => format!("${}", s),
-            Value::Function(s) => format!("_{}", s),
+            Value::Label(s) => format!("$_{}", s),
+            Value::Function(s) => format!("$_{}", s),
         }
     }
 
@@ -308,7 +308,7 @@ impl CodeGenerator {
 }
 
 pub fn generate_code(prog: &Program) -> io::Result<()> {
-    let mut code_generator = CodeGenerator::new("prog.S")?;
+    let mut code_generator = CodeGenerator::new()?;
     code_generator.emit_program(prog)?;
     code_generator.finish()
 }

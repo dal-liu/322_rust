@@ -38,8 +38,8 @@ fn number<'src>() -> impl Parser<'src, &'src str, i64> {
         .or(just('-').to(-1))
         .or_not()
         .map(|opt| opt.unwrap_or(1))
-        .then(text::int(10).from_str::<i64>().unwrapped())
-        .map(|(sign, magnitude)| sign * magnitude)
+        .then(text::int(10).from_str::<i128>().unwrapped())
+        .map(|(sign, magnitude)| (sign * magnitude) as i64)
         .padded_by(separators())
 }
 
@@ -107,7 +107,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
     let load = register()
         .then_ignore(arrow.then_ignore(mem))
         .then(register())
-        .then(text::int(10).from_str::<i64>().unwrapped())
+        .then(number())
         .map(|((dst, src), offset)| Instruction::Load { dst, src, offset });
 
     let store = mem
@@ -129,7 +129,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
 
     let store_arithmetic = mem
         .ignore_then(register())
-        .then(text::int(10).from_str::<i64>().unwrapped())
+        .then(number())
         .then(arithmetic_op())
         .then(value())
         .map(|(((dst, offset), op), src)| Instruction::StoreArithmetic {
@@ -143,7 +143,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
         .then(arithmetic_op())
         .then_ignore(mem)
         .then(register())
-        .then(text::int(10).from_str::<i64>().unwrapped())
+        .then(number())
         .map(|(((dst, op), src), offset)| Instruction::LoadArithmetic {
             dst,
             op,
@@ -302,6 +302,7 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program> {
             entry_point,
             functions,
         })
+        .then_ignore(any().repeated())
 }
 
 pub fn parse_file<'a>(file_name: &'a str) -> Option<Program> {

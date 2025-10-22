@@ -455,11 +455,11 @@ int tuple_error (int64_t instructionID, int64_t length, int64_t index) {
    * Check the inputs.
    */
   if (index < 0){
-    printf("ERROR: instruction at line %lld attempted to use the negative index %lld\n", instructionID, index);
+    printf("ERROR: instruction at line %ld attempted to use the negative index %ld\n", instructionID, index);
     exit(0);
   }
   if (index < length){
-    printf("ERROR: the call triggered by line %d to \"tuple-error(line, length, index)\" is incorrect, the index %d is within the accepted range (the length is %d)\n", instructionID, index, length);
+    printf("ERROR: the call triggered by line %ld to \"tuple-error(line, length, index)\" is incorrect, the index %ld is within the accepted range (the length is %ld)\n", instructionID, index, length);
     abort();
   }
 
@@ -502,11 +502,11 @@ int array_error (int64_t instructionID, int64_t length, int64_t index) {
    * Check the inputs.
    */
   if (index < 0){
-    printf("ERROR: instruction at line %lld attempted to use the negative index %lld\n", instructionID, index);
+    printf("ERROR: instruction at line %ld attempted to use the negative index %ld\n", instructionID, index);
     exit(0);
   }
   if (index < length){
-    printf("ERROR: the call triggered by line %d to \"tensor-error(line, length, index)\" is incorrect, the index %d is within the accepted range (the length is %d)\n", instructionID, index, length);
+    printf("ERROR: the call triggered by line %ld to \"tensor-error(line, length, index)\" is incorrect, the index %ld is within the accepted range (the length is %ld)\n", instructionID, index, length);
     abort();
   }
 
@@ -554,7 +554,7 @@ int tensor_error (int64_t instructionID, int64_t dimension, int64_t length, int6
    * Check the inputs.
    */
   if (index < 0){
-    printf("ERROR: instruction at line %lld attempted to use the negative index %lld in the dimension %lld\n", instructionID, index, dimension);
+    printf("ERROR: instruction at line %ld attempted to use the negative index %ld in the dimension %ld\n", instructionID, index, dimension);
     exit(0);
   }
   if (index < length){

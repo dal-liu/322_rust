@@ -1,5 +1,5 @@
 use chumsky::prelude::*;
-use l1::*;
+use l2::*;
 use std::fs;
 
 fn separators<'src>() -> impl Parser<'src, &'src str, ()> + Copy {
@@ -13,14 +13,6 @@ fn comment<'src>() -> impl Parser<'src, &'src str, ()> {
 fn register<'src>() -> impl Parser<'src, &'src str, Register> {
     choice((
         just("rax").to(Register::RAX),
-        just("rbx").to(Register::RBX),
-        just("rbp").to(Register::RBP),
-        just("r10").to(Register::R10),
-        just("r11").to(Register::R11),
-        just("r12").to(Register::R12),
-        just("r13").to(Register::R13),
-        just("r14").to(Register::R14),
-        just("r15").to(Register::R15),
         just("rdi").to(Register::RDI),
         just("rsi").to(Register::RSI),
         just("rdx").to(Register::RDX),
@@ -55,12 +47,19 @@ fn label_name<'src>() -> impl Parser<'src, &'src str, String> {
         .padded_by(separators())
 }
 
+fn variable<'src>() -> impl Parser<'src, &'src str, String> {
+    just('%')
+        .ignore_then(text::ascii::ident().map(|s: &str| s.to_string()))
+        .padded_by(separators())
+}
+
 fn value<'src>() -> impl Parser<'src, &'src str, Value> {
     choice((
         register().map(|reg| Value::Register(reg)),
         number().map(|num| Value::Number(num)),
         function_name().map(|callee| Value::Function(callee)),
         label_name().map(|label| Value::Label(label)),
+        variable().map(|var| Value::Variable(var)),
     ))
     .padded_by(separators())
 }
@@ -99,36 +98,43 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
 
     let call_keyword = just("call").padded_by(separators());
 
-    let assign = register()
+    let stack_arg_keyword = just("stack-arg").padded_by(separators());
+
+    let assign = value()
         .then_ignore(arrow)
         .then(value())
         .map(|(dst, src)| Instruction::Assign { dst, src });
 
-    let load = register()
+    let load = value()
         .then_ignore(arrow.then_ignore(mem))
-        .then(register())
+        .then(value())
         .then(number())
         .map(|((dst, src), offset)| Instruction::Load { dst, src, offset });
 
     let store = mem
-        .ignore_then(register())
+        .ignore_then(value())
         .then(number())
         .then_ignore(arrow)
         .then(value())
         .map(|((dst, offset), src)| Instruction::Store { dst, offset, src });
 
-    let arithmetic = register()
+    let stack_arg = value()
+        .then_ignore(arrow.then(stack_arg_keyword))
+        .then(number())
+        .map(|(dst, offset)| Instruction::StackArg { dst, offset });
+
+    let arithmetic = value()
         .then(arithmetic_op())
         .then(value())
         .map(|((lhs, op), rhs)| Instruction::Arithmetic { lhs, op, rhs });
 
-    let shift = register()
+    let shift = value()
         .then(shift_op())
         .then(value())
         .map(|((lhs, op), rhs)| Instruction::Shift { lhs, op, rhs });
 
     let store_arithmetic = mem
-        .ignore_then(register())
+        .ignore_then(value())
         .then(number())
         .then(arithmetic_op())
         .then(value())
@@ -139,10 +145,10 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
             src,
         });
 
-    let load_arithmetic = register()
+    let load_arithmetic = value()
         .then(arithmetic_op())
         .then_ignore(mem)
-        .then(register())
+        .then(value())
         .then(number())
         .map(|(((dst, op), src), offset)| Instruction::LoadArithmetic {
             dst,
@@ -151,7 +157,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
             offset,
         });
 
-    let compare = register()
+    let compare = value()
         .then_ignore(arrow)
         .then(value())
         .then(compare_op())
@@ -217,18 +223,18 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
         )
         .map(|args| Instruction::TensorError(args));
 
-    let increment = register()
+    let increment = value()
         .then_ignore(just("++").padded_by(separators()))
         .map(|reg| Instruction::Increment(reg));
 
-    let decrement = register()
+    let decrement = value()
         .then_ignore(just("--").padded_by(separators()))
         .map(|reg| Instruction::Decrement(reg));
 
-    let lea = register()
+    let lea = value()
         .then_ignore(just('@').padded_by(separators()))
-        .then(register())
-        .then(register())
+        .then(value())
+        .then(value())
         .then(
             text::int(10)
                 .from_str::<u8>()
@@ -247,6 +253,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
         assign,
         load,
         store,
+        stack_arg,
         arithmetic,
         shift,
         store_arithmetic,
@@ -275,7 +282,6 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function> {
         .padded()
         .ignore_then(function_name().padded_by(comment().repeated()).padded())
         .then(number().padded_by(comment().repeated()).padded())
-        .then(number().padded_by(comment().repeated()).padded())
         .then(
             instruction()
                 .repeated()
@@ -283,11 +289,10 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function> {
                 .collect::<Vec<Instruction>>(),
         )
         .then_ignore(just(')').padded_by(comment().repeated()).padded())
-        .map(|(((name, args), locals), instructions)| Function {
+        .map(|((name, args), instructions)| Function {
             name,
             args,
-            locals,
-            instructions,
+            basic_blocks: collect_basic_blocks(instructions),
         })
 }
 
@@ -303,6 +308,46 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program> {
             functions,
         })
         .then_ignore(any().repeated())
+}
+
+fn collect_basic_blocks(instructions: Vec<Instruction>) -> Vec<BasicBlock> {
+    let mut blocks = vec![BasicBlock {
+        instructions: vec![],
+    }];
+
+    for inst in instructions {
+        let block = blocks.last_mut().unwrap();
+
+        match inst {
+            Instruction::CJump { .. } | Instruction::Goto(_) | Instruction::Return => {
+                block.instructions.push(inst);
+                blocks.push(BasicBlock {
+                    instructions: vec![],
+                });
+            }
+            Instruction::Label(_) => {
+                if block.instructions.is_empty() {
+                    block.instructions.push(inst);
+                } else {
+                    blocks.push(BasicBlock {
+                        instructions: vec![inst],
+                    });
+                }
+            }
+            _ => {
+                block.instructions.push(inst);
+            }
+        }
+    }
+
+    if blocks
+        .last()
+        .map_or(false, |block| block.instructions.is_empty())
+    {
+        blocks.pop();
+    }
+
+    blocks
 }
 
 pub fn parse_file<'a>(file_name: &'a str) -> Option<Program> {

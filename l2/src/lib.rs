@@ -1,16 +1,8 @@
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Register {
     RAX,
-    RBX,
-    RBP,
-    R10,
-    R11,
-    R12,
-    R13,
-    R14,
-    R15,
     RDI,
     RSI,
     RDX,
@@ -24,14 +16,6 @@ impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let reg = match self {
             Register::RAX => "rax",
-            Register::RBX => "rbx",
-            Register::RBP => "rbp",
-            Register::R10 => "r10",
-            Register::R11 => "r11",
-            Register::R12 => "r12",
-            Register::R13 => "r13",
-            Register::R14 => "r14",
-            Register::R15 => "r15",
             Register::RDI => "rdi",
             Register::RSI => "rsi",
             Register::RDX => "rdx",
@@ -50,6 +34,7 @@ pub enum Value {
     Number(i64),
     Label(String),
     Function(String),
+    Variable(String),
 }
 
 impl fmt::Display for Value {
@@ -59,6 +44,7 @@ impl fmt::Display for Value {
             Value::Number(n) => write!(f, "{}", n),
             Value::Label(s) => write!(f, ":{}", s),
             Value::Function(s) => write!(f, "@{}", s),
+            Value::Variable(s) => write!(f, "%{}", s),
         }
     }
 }
@@ -120,43 +106,47 @@ impl fmt::Display for CompareOp {
 #[derive(Debug, Clone)]
 pub enum Instruction {
     Assign {
-        dst: Register,
+        dst: Value,
         src: Value,
     },
     Load {
-        dst: Register,
-        src: Register,
+        dst: Value,
+        src: Value,
         offset: i64,
     },
     Store {
-        dst: Register,
+        dst: Value,
         offset: i64,
         src: Value,
     },
+    StackArg {
+        dst: Value,
+        offset: i64,
+    },
     Arithmetic {
-        lhs: Register,
+        lhs: Value,
         op: ArithmeticOp,
         rhs: Value,
     },
     Shift {
-        lhs: Register,
+        lhs: Value,
         op: ShiftOp,
         rhs: Value,
     },
     StoreArithmetic {
-        dst: Register,
+        dst: Value,
         offset: i64,
         op: ArithmeticOp,
         src: Value,
     },
     LoadArithmetic {
-        dst: Register,
+        dst: Value,
         op: ArithmeticOp,
-        src: Register,
+        src: Value,
         offset: i64,
     },
     Compare {
-        dst: Register,
+        dst: Value,
         lhs: Value,
         op: CompareOp,
         rhs: Value,
@@ -179,12 +169,12 @@ pub enum Instruction {
     Allocate,
     TupleError,
     TensorError(u8),
-    Increment(Register),
-    Decrement(Register),
+    Increment(Value),
+    Decrement(Value),
     LEA {
-        dst: Register,
-        src: Register,
-        offset: Register,
+        dst: Value,
+        src: Value,
+        offset: Value,
         scale: u8,
     },
 }
@@ -198,6 +188,9 @@ impl fmt::Display for Instruction {
             }
             Instruction::Store { dst, offset, src } => {
                 write!(f, "mem {} {} <- {}", dst, offset, src)
+            }
+            Instruction::StackArg { dst, offset } => {
+                write!(f, "{} <- stack-arg {}", dst, offset)
             }
             Instruction::Arithmetic { lhs, op, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
             Instruction::Shift { lhs, op, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
@@ -244,23 +237,43 @@ impl fmt::Display for Instruction {
 }
 
 #[derive(Debug)]
+pub enum Terminator {
+    CJump(usize, usize),
+    Goto(usize),
+    Return,
+}
+
+#[derive(Debug)]
+pub struct BasicBlock {
+    pub instructions: Vec<Instruction>,
+}
+
+impl fmt::Display for BasicBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for inst in &self.instructions {
+            writeln!(f, "\t{}", inst)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 pub struct Function {
     pub name: String,
     pub args: i64,
-    pub locals: i64,
-    pub instructions: Vec<Instruction>,
+    pub basic_blocks: Vec<BasicBlock>,
 }
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "(@{}", self.name)?;
-        writeln!(f, "\t{} {}", self.args, self.locals)?;
+        writeln!(f, "\t{}", self.args)?;
 
-        for inst in &self.instructions {
-            writeln!(f, "\t{}", inst)?;
+        for block in &self.basic_blocks {
+            write!(f, "{}", block)?;
         }
 
-        write!(f, ")")
+        writeln!(f, ")")
     }
 }
 
@@ -276,9 +289,8 @@ impl fmt::Display for Program {
 
         for func in &self.functions {
             writeln!(f, "{}", func)?;
-            writeln!(f)?;
         }
 
-        write!(f, ")")
+        writeln!(f, ")")
     }
 }

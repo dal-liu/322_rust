@@ -1,4 +1,4 @@
-use crate::l1::*;
+use l1::*;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 
@@ -34,7 +34,7 @@ impl CodeGenerator {
              \tpopq %rbp\n\
              \tpopq %rbx\n\
              \tretq",
-            &prog.entry_point
+            prog.entry_point
         )?;
 
         for func in &prog.functions {
@@ -45,7 +45,7 @@ impl CodeGenerator {
     }
 
     fn emit_function(&mut self, func: &Function) -> io::Result<()> {
-        writeln!(self.stream, "_{}:", &func.name)?;
+        writeln!(self.stream, "_{}:", func.name)?;
 
         if func.locals > 0 {
             writeln!(self.stream, "\tsubq ${}, %rsp", func.locals * 8)?;

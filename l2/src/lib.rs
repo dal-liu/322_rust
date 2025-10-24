@@ -1,5 +1,7 @@
 use std::fmt;
 
+const MAX_SUCCESSORS: usize = 2;
+
 #[derive(Debug, Clone)]
 pub enum Register {
     RAX,
@@ -239,7 +241,7 @@ impl fmt::Display for Instruction {
 #[derive(Debug)]
 pub enum Target {
     Label(Option<String>),
-    Indexes([Option<usize>; 2]),
+    Indexes([Option<usize>; MAX_SUCCESSORS]),
 }
 
 #[derive(Debug)]

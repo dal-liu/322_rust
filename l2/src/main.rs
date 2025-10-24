@@ -5,6 +5,11 @@ use std::env;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let prog = parse_file(&args[1]).unwrap();
-    dbg!(prog);
+    match parse_file(&args[1]) {
+        Some(prog) => {
+            println!("{}", prog);
+            ();
+        }
+        None => (),
+    }
 }

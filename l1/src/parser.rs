@@ -1,17 +1,19 @@
+use ariadne::{Color, Label, Report, ReportKind, sources};
 use chumsky::prelude::*;
 use l1::*;
 use std::fs;
 
-fn separators<'src>() -> impl Parser<'src, &'src str, ()> + Copy {
+fn separators<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Copy {
     one_of(" \t").repeated()
 }
 
-fn comment<'src>() -> impl Parser<'src, &'src str, ()> {
+fn comment<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> {
     just("//").ignore_then(none_of('\n').repeated()).padded()
 }
 
-fn register<'src>() -> impl Parser<'src, &'src str, Register> {
+fn write_register<'src>() -> impl Parser<'src, &'src str, Register, extra::Err<Rich<'src, char>>> {
     choice((
+        arg_register(),
         just("rax").to(Register::RAX),
         just("rbx").to(Register::RBX),
         just("rbp").to(Register::RBP),
@@ -21,18 +23,87 @@ fn register<'src>() -> impl Parser<'src, &'src str, Register> {
         just("r13").to(Register::R13),
         just("r14").to(Register::R14),
         just("r15").to(Register::R15),
-        just("rdi").to(Register::RDI),
-        just("rsi").to(Register::RSI),
-        just("rdx").to(Register::RDX),
-        just("r8").to(Register::R8),
-        just("r9").to(Register::R9),
-        just("rcx").to(Register::RCX),
-        just("rsp").to(Register::RSP),
     ))
     .padded_by(separators())
 }
 
-fn number<'src>() -> impl Parser<'src, &'src str, i64> {
+fn arg_register<'src>() -> impl Parser<'src, &'src str, Register, extra::Err<Rich<'src, char>>> {
+    choice((
+        just("rdi").to(Register::RDI),
+        just("rsi").to(Register::RSI),
+        just("rdx").to(Register::RDX),
+        rcx(),
+        just("r8").to(Register::R8),
+        just("r9").to(Register::R9),
+    ))
+    .padded_by(separators())
+}
+
+fn rcx<'src>() -> impl Parser<'src, &'src str, Register, extra::Err<Rich<'src, char>>> {
+    just("rcx").to(Register::RCX).padded_by(separators())
+}
+
+fn value<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
+    choice((
+        register_or_number(),
+        function_name().map(|callee| Value::Function(callee)),
+        label_name().map(|label| Value::Label(label)),
+    ))
+    .padded_by(separators())
+}
+
+fn register_or_number<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
+    register()
+        .map(|reg| Value::Register(reg))
+        .or(number().map(|num| Value::Number(num)))
+        .padded_by(separators())
+}
+
+fn write_or_function<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
+    write_register()
+        .map(|reg| Value::Register(reg))
+        .or(function_name().map(|callee| Value::Function(callee)))
+        .padded_by(separators())
+}
+
+fn register<'src>() -> impl Parser<'src, &'src str, Register, extra::Err<Rich<'src, char>>> {
+    write_register()
+        .or(just("rsp").to(Register::RSP))
+        .padded_by(separators())
+}
+
+fn arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, extra::Err<Rich<'src, char>>>
+{
+    choice((
+        memory_arithmetic_op(),
+        just("*=").to(ArithmeticOp::MultEq),
+        just("&=").to(ArithmeticOp::AndEq),
+    ))
+    .padded_by(separators())
+}
+
+fn shift_op<'src>() -> impl Parser<'src, &'src str, ShiftOp, extra::Err<Rich<'src, char>>> {
+    choice((
+        just("<<=").to(ShiftOp::LeftShiftEq),
+        just(">>=").to(ShiftOp::RightShiftEq),
+    ))
+    .padded_by(separators())
+}
+
+fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp, extra::Err<Rich<'src, char>>> {
+    choice((
+        just("<=").to(CompareOp::LessEq),
+        just("<").to(CompareOp::Less),
+        just("=").to(CompareOp::Equal),
+    ))
+    .padded_by(separators())
+}
+
+fn multiplicative_of_8<'src>() -> impl Parser<'src, &'src str, i64, extra::Err<Rich<'src, char>>> {
+    number().filter(|n| n % 8 == 0).padded_by(separators())
+}
+
+fn number<'src>() -> impl Parser<'src, &'src str, i64, extra::Err<Rich<'src, char>>> {
     just('+')
         .to(1)
         .or(just('-').to(-1))
@@ -43,95 +114,73 @@ fn number<'src>() -> impl Parser<'src, &'src str, i64> {
         .padded_by(separators())
 }
 
-fn function_name<'src>() -> impl Parser<'src, &'src str, String> {
+fn function_name<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> {
     just('@')
         .ignore_then(text::ascii::ident().map(|s: &str| s.to_string()))
         .padded_by(separators())
 }
 
-fn label_name<'src>() -> impl Parser<'src, &'src str, String> {
+fn label_name<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> {
     just(':')
         .ignore_then(text::ascii::ident().map(|s: &str| s.to_string()))
         .padded_by(separators())
 }
 
-fn value<'src>() -> impl Parser<'src, &'src str, Value> {
-    choice((
-        register().map(|reg| Value::Register(reg)),
-        number().map(|num| Value::Number(num)),
-        function_name().map(|callee| Value::Function(callee)),
-        label_name().map(|label| Value::Label(label)),
-    ))
-    .padded_by(separators())
+fn rcx_or_number<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
+    rcx()
+        .map(|reg| Value::Register(reg))
+        .or(number().map(|num| Value::Number(num)))
+        .padded_by(separators())
 }
 
-fn arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp> {
-    choice((
-        just("+=").to(ArithmeticOp::PlusEq),
-        just("-=").to(ArithmeticOp::MinusEq),
-        just("*=").to(ArithmeticOp::MultEq),
-        just("&=").to(ArithmeticOp::AndEq),
-    ))
-    .padded_by(separators())
+fn memory_arithmetic_op<'src>()
+-> impl Parser<'src, &'src str, ArithmeticOp, extra::Err<Rich<'src, char>>> {
+    just("+=")
+        .to(ArithmeticOp::PlusEq)
+        .or(just("-=").to(ArithmeticOp::MinusEq))
+        .padded_by(separators())
 }
 
-fn shift_op<'src>() -> impl Parser<'src, &'src str, ShiftOp> {
-    choice((
-        just("<<=").to(ShiftOp::LeftShiftEq),
-        just(">>=").to(ShiftOp::RightShiftEq),
-    ))
-    .padded_by(separators())
-}
-
-fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp> {
-    choice((
-        just("<=").to(CompareOp::LessEq),
-        just("<").to(CompareOp::Less),
-        just("=").to(CompareOp::Equal),
-    ))
-    .padded_by(separators())
-}
-
-fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
+fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, extra::Err<Rich<'src, char>>> {
     let arrow = just("<-").padded_by(separators());
 
     let mem = just("mem").padded_by(separators());
 
     let call_keyword = just("call").padded_by(separators());
 
-    let assign = register()
+    let assign = write_register()
         .then_ignore(arrow)
         .then(value())
         .map(|(dst, src)| Instruction::Assign { dst, src });
 
-    let load = register()
+    let load = write_register()
         .then_ignore(arrow.then_ignore(mem))
         .then(register())
-        .then(number())
+        .then(multiplicative_of_8())
         .map(|((dst, src), offset)| Instruction::Load { dst, src, offset });
 
     let store = mem
         .ignore_then(register())
-        .then(number())
+        .then(multiplicative_of_8())
         .then_ignore(arrow)
         .then(value())
         .map(|((dst, offset), src)| Instruction::Store { dst, offset, src });
 
-    let arithmetic = register()
+    let arithmetic = write_register()
         .then(arithmetic_op())
-        .then(value())
+        .then(register_or_number())
         .map(|((lhs, op), rhs)| Instruction::Arithmetic { lhs, op, rhs });
 
-    let shift = register()
+    let shift = write_register()
         .then(shift_op())
-        .then(value())
+        .then(rcx_or_number())
         .map(|((lhs, op), rhs)| Instruction::Shift { lhs, op, rhs });
 
     let store_arithmetic = mem
         .ignore_then(register())
-        .then(number())
-        .then(arithmetic_op())
-        .then(value())
+        .then(multiplicative_of_8())
+        .then(memory_arithmetic_op())
+        .then(register_or_number())
         .map(|(((dst, offset), op), src)| Instruction::StoreArithmetic {
             dst,
             offset,
@@ -139,11 +188,11 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
             src,
         });
 
-    let load_arithmetic = register()
-        .then(arithmetic_op())
+    let load_arithmetic = write_register()
+        .then(memory_arithmetic_op())
         .then_ignore(mem)
         .then(register())
-        .then(number())
+        .then(multiplicative_of_8())
         .map(|(((dst, op), src), offset)| Instruction::LoadArithmetic {
             dst,
             op,
@@ -151,18 +200,18 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
             offset,
         });
 
-    let compare = register()
+    let compare = write_register()
         .then_ignore(arrow)
-        .then(value())
+        .then(register_or_number())
         .then(compare_op())
-        .then(value())
+        .then(register_or_number())
         .map(|(((dst, lhs), op), rhs)| Instruction::Compare { dst, lhs, op, rhs });
 
     let cjump = just("cjump")
         .padded_by(separators())
-        .ignore_then(value())
+        .ignore_then(register_or_number())
         .then(compare_op())
-        .then(value())
+        .then(register_or_number())
         .then(label_name())
         .map(|(((lhs, op), rhs), label)| Instruction::CJump {
             lhs,
@@ -183,7 +232,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
         .to(Instruction::Return);
 
     let call_inst = call_keyword
-        .ignore_then(value())
+        .ignore_then(write_or_function())
         .then(number())
         .map(|(callee, args)| Instruction::Call { callee, args });
 
@@ -217,18 +266,18 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
         )
         .map(|args| Instruction::TensorError(args));
 
-    let increment = register()
+    let increment = write_register()
         .then_ignore(just("++").padded_by(separators()))
         .map(|reg| Instruction::Increment(reg));
 
-    let decrement = register()
+    let decrement = write_register()
         .then_ignore(just("--").padded_by(separators()))
         .map(|reg| Instruction::Decrement(reg));
 
-    let lea = register()
+    let lea = write_register()
         .then_ignore(just('@').padded_by(separators()))
-        .then(register())
-        .then(register())
+        .then(write_register())
+        .then(write_register())
         .then(
             text::int(10)
                 .from_str::<u8>()
@@ -269,7 +318,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction> {
     .padded()
 }
 
-fn function<'src>() -> impl Parser<'src, &'src str, Function> {
+fn function<'src>() -> impl Parser<'src, &'src str, Function, extra::Err<Rich<'src, char>>> {
     just('(')
         .padded_by(comment().repeated())
         .padded()
@@ -291,21 +340,45 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function> {
         })
 }
 
-fn program<'src>() -> impl Parser<'src, &'src str, Program> {
+fn program<'src>() -> impl Parser<'src, &'src str, Program, extra::Err<Rich<'src, char>>> {
     just('(')
         .padded_by(comment().repeated())
         .padded()
         .ignore_then(function_name().padded_by(comment().repeated()).padded())
         .then(function().repeated().at_least(1).collect::<Vec<Function>>())
-        .then_ignore(just(')').padded_by(comment().repeated()).padded())
+        .then_ignore(
+            just(')')
+                .padded_by(comment().repeated())
+                .padded()
+                .then(any().repeated()),
+        )
         .map(|(entry_point, functions)| Program {
             entry_point,
             functions,
         })
-        .then_ignore(any().repeated())
 }
 
-pub fn parse_file<'a>(file_name: &'a str) -> Option<Program> {
-    let file_input = fs::read_to_string(file_name).unwrap();
-    program().parse(&file_input).into_output()
+pub fn parse_file(file_name: &str) -> Option<Program> {
+    let file_name = file_name.to_string();
+    let input = fs::read_to_string(&file_name).unwrap();
+    let (output, errors) = program().parse(&input).into_output_errors();
+
+    errors.into_iter().for_each(|err| {
+        Report::build(
+            ReportKind::Error,
+            (file_name.clone(), err.span().into_range()),
+        )
+        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+        .with_message(err.to_string())
+        .with_label(
+            Label::new((file_name.clone(), err.span().into_range()))
+                .with_message(err.reason().to_string())
+                .with_color(Color::Red),
+        )
+        .finish()
+        .eprint(sources([(file_name.clone(), input.clone())]))
+        .unwrap();
+    });
+
+    output
 }

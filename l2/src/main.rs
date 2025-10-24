@@ -7,8 +7,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     match parse_file(&args[1]) {
         Some(prog) => {
-            println!("{}", prog);
-            ();
+            dbg!(prog);
         }
         None => (),
     }

@@ -237,15 +237,15 @@ impl fmt::Display for Instruction {
 }
 
 #[derive(Debug)]
-pub enum Terminator {
-    CJump(usize, usize),
-    Goto(usize),
-    Return,
+pub enum Next {
+    Label(Option<String>),
+    Index(Vec<usize>),
 }
 
 #[derive(Debug)]
 pub struct BasicBlock {
     pub instructions: Vec<Instruction>,
+    pub next: Next,
 }
 
 impl fmt::Display for BasicBlock {

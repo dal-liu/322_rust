@@ -239,7 +239,7 @@ impl fmt::Display for Instruction {
 #[derive(Debug)]
 pub enum Target {
     Label(Option<String>),
-    Indexes(Option<usize>, Option<usize>),
+    Indexes([Option<usize>; 2]),
 }
 
 #[derive(Debug)]

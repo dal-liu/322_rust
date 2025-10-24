@@ -29,19 +29,19 @@ pub fn compute_targets(prog: &mut Program) {
                         .copied()
                         .unwrap_or_else(|| panic!("invalid label {}", label));
                     let k = if i < last_index { Some(i + 1) } else { None };
-                    Target::Indexes(Some(j), k)
+                    Target::Indexes([Some(j), k])
                 }
                 Some(Instruction::Goto(label)) => {
                     let j = label_to_index
                         .get(label)
                         .copied()
                         .unwrap_or_else(|| panic!("invalid label {}", label));
-                    Target::Indexes(Some(j), None)
+                    Target::Indexes([Some(j), None])
                 }
-                Some(Instruction::Return) => Target::Indexes(None, None),
+                Some(Instruction::Return) => Target::Indexes([None, None]),
                 Some(_) => {
                     let k = if i < last_index { Some(i + 1) } else { None };
-                    Target::Indexes(k, None)
+                    Target::Indexes([k, None])
                 }
                 None => panic!("empty block in {}", &func.name),
             }

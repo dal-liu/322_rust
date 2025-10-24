@@ -237,15 +237,15 @@ impl fmt::Display for Instruction {
 }
 
 #[derive(Debug)]
-pub enum Next {
+pub enum Target {
     Label(Option<String>),
-    Index(Vec<usize>),
+    Indexes(Option<usize>, Option<usize>),
 }
 
 #[derive(Debug)]
 pub struct BasicBlock {
     pub instructions: Vec<Instruction>,
-    pub next: Next,
+    pub target: Target,
 }
 
 impl fmt::Display for BasicBlock {

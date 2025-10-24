@@ -364,7 +364,7 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program, extra::Err<Rich<'src
 fn collect_basic_blocks(instructions: Vec<Instruction>) -> Vec<BasicBlock> {
     let mut blocks = vec![BasicBlock {
         instructions: vec![],
-        next: Next::Label(None),
+        target: Target::Label(None),
     }];
 
     for inst in instructions {
@@ -379,20 +379,22 @@ fn collect_basic_blocks(instructions: Vec<Instruction>) -> Vec<BasicBlock> {
             Instruction::CJump { .. } | Instruction::Goto(_) => {
                 block.instructions.push(inst);
 
-                if let (Some(new_label), Next::Label(old_label)) = (cloned_label, &mut block.next) {
-                    *old_label = Some(new_label);
+                if let (Some(src_label), Target::Label(dst_label)) =
+                    (cloned_label, &mut block.target)
+                {
+                    *dst_label = Some(src_label);
                 }
 
                 blocks.push(BasicBlock {
                     instructions: vec![],
-                    next: Next::Label(None),
+                    target: Target::Label(None),
                 });
             }
             Instruction::Return => {
                 block.instructions.push(inst);
                 blocks.push(BasicBlock {
                     instructions: vec![],
-                    next: Next::Label(None),
+                    target: Target::Label(None),
                 });
             }
             Instruction::Label(_) => {
@@ -401,7 +403,7 @@ fn collect_basic_blocks(instructions: Vec<Instruction>) -> Vec<BasicBlock> {
                 } else {
                     blocks.push(BasicBlock {
                         instructions: vec![inst],
-                        next: Next::Label(None),
+                        target: Target::Label(None),
                     });
                 }
             }

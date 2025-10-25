@@ -8,7 +8,9 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     match parse_file(&args[1]) {
         Some(mut prog) => {
-            analysis::compute_targets(&mut prog);
+            for func in &mut prog.functions {
+                analysis::compute_targets(func);
+            }
             dbg!(&prog);
         }
         None => (),

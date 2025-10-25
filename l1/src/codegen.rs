@@ -59,8 +59,9 @@ impl CodeGenerator {
     }
 
     fn emit_instruction(&mut self, func: &Function, inst: &Instruction) -> io::Result<()> {
+        use Instruction::*;
         match inst {
-            Instruction::Assign { dst, src } => {
+            Assign { dst, src } => {
                 if let Value::Register(reg) = src {
                     if dst == reg {
                         return Ok(());
@@ -68,10 +69,10 @@ impl CodeGenerator {
                 }
                 writeln!(self.stream, "\tmovq {}, %{}", self.format_value(src), dst)
             }
-            Instruction::Load { dst, src, offset } => {
+            Load { dst, src, offset } => {
                 writeln!(self.stream, "\tmovq {}(%{}), %{}", offset, src, dst)
             }
-            Instruction::Store { dst, offset, src } => {
+            Store { dst, offset, src } => {
                 let stored = if let Value::Label(label) = src {
                     format!("$_{}", label)
                 } else {
@@ -79,7 +80,7 @@ impl CodeGenerator {
                 };
                 writeln!(self.stream, "\tmovq {}, {}(%{})", stored, offset, dst)
             }
-            Instruction::Arithmetic { lhs, op, rhs } => {
+            Arithmetic { dst, op, src } => {
                 let arith = match op {
                     ArithmeticOp::PlusEq => "addq",
                     ArithmeticOp::MinusEq => "subq",
@@ -90,11 +91,11 @@ impl CodeGenerator {
                     self.stream,
                     "\t{} {}, %{}",
                     arith,
-                    self.format_value(rhs),
-                    lhs
+                    self.format_value(src),
+                    dst
                 )
             }
-            Instruction::Shift { lhs, op, rhs } => {
+            Shift { dst, op, src } => {
                 let shift = match op {
                     ShiftOp::LeftShiftEq => "salq",
                     ShiftOp::RightShiftEq => "sarq",
@@ -103,11 +104,11 @@ impl CodeGenerator {
                     self.stream,
                     "\t{} {}, %{}",
                     shift,
-                    self.format_value_8_bit(rhs),
-                    lhs
+                    self.format_value_8_bit(src),
+                    dst
                 )
             }
-            Instruction::StoreArithmetic {
+            StoreArithmetic {
                 dst,
                 offset,
                 op,
@@ -127,7 +128,7 @@ impl CodeGenerator {
                     dst
                 )
             }
-            Instruction::LoadArithmetic {
+            LoadArithmetic {
                 dst,
                 op,
                 src,
@@ -140,7 +141,7 @@ impl CodeGenerator {
                 };
                 writeln!(self.stream, "\t{} {}(%{}), %{}", arith, offset, src, dst)
             }
-            Instruction::Compare { dst, lhs, op, rhs } => {
+            Compare { dst, lhs, op, rhs } => {
                 if let (Value::Number(a), Value::Number(b)) = (lhs, rhs) {
                     let res = match op {
                         CompareOp::Less => a < b,
@@ -175,7 +176,7 @@ impl CodeGenerator {
                     writeln!(self.stream, "\tmovzbq {}, %{}", dst_8_bit, dst)
                 }
             }
-            Instruction::CJump {
+            CJump {
                 lhs,
                 op,
                 rhs,
@@ -215,16 +216,16 @@ impl CodeGenerator {
                     writeln!(self.stream, "\t{} _{}", jmp, label)
                 }
             }
-            Instruction::Label(label) => writeln!(self.stream, "_{}:", label),
-            Instruction::Goto(label) => writeln!(self.stream, "\tjmp _{}", label),
-            Instruction::Return => {
+            Label(label) => writeln!(self.stream, "_{}:", label),
+            Goto(label) => writeln!(self.stream, "\tjmp _{}", label),
+            Return => {
                 let stack_size = (func.locals + (func.args - 6).max(0)) * 8;
                 if stack_size > 0 {
                     writeln!(self.stream, "\taddq ${}, %rsp", stack_size)?;
                 }
                 writeln!(self.stream, "\tretq")
             }
-            Instruction::Call { callee, args } => {
+            Call { callee, args } => {
                 writeln!(self.stream, "\tsubq ${}, %rsp", (args - 6).max(0) * 8 + 8)?;
                 let name = match callee {
                     Value::Register(reg) => format!("*%{}", reg),
@@ -233,11 +234,11 @@ impl CodeGenerator {
                 };
                 writeln!(self.stream, "\tjmp {}", name)
             }
-            Instruction::Print => writeln!(self.stream, "\tcall print"),
-            Instruction::Allocate => writeln!(self.stream, "\tcall allocate"),
-            Instruction::Input => writeln!(self.stream, "\tcall input"),
-            Instruction::TupleError => writeln!(self.stream, "\tcall tuple_error"),
-            Instruction::TensorError(args) => {
+            Print => writeln!(self.stream, "\tcall print"),
+            Allocate => writeln!(self.stream, "\tcall allocate"),
+            Input => writeln!(self.stream, "\tcall input"),
+            TupleError => writeln!(self.stream, "\tcall tuple_error"),
+            TensorError(args) => {
                 let callee = match args {
                     1 => "array_tensor_error_null",
                     3 => "array_error",
@@ -246,9 +247,9 @@ impl CodeGenerator {
                 };
                 writeln!(self.stream, "\tcall {}", callee)
             }
-            Instruction::Increment(reg) => writeln!(self.stream, "\tinc %{}", reg),
-            Instruction::Decrement(reg) => writeln!(self.stream, "\tdec %{}", reg),
-            Instruction::LEA {
+            Increment(reg) => writeln!(self.stream, "\tinc %{}", reg),
+            Decrement(reg) => writeln!(self.stream, "\tdec %{}", reg),
+            LEA {
                 dst,
                 src,
                 offset,
@@ -282,23 +283,24 @@ impl CodeGenerator {
     }
 
     fn format_register_8_bit(&self, reg: &Register) -> &'static str {
+        use Register::*;
         match reg {
-            Register::RAX => "%al",
-            Register::RBX => "%bl",
-            Register::RBP => "%bpl",
-            Register::R10 => "%r10b",
-            Register::R11 => "%r11b",
-            Register::R12 => "%r12b",
-            Register::R13 => "%r13b",
-            Register::R14 => "%r14b",
-            Register::R15 => "%r15b",
-            Register::RDI => "%dil",
-            Register::RSI => "%sil",
-            Register::RDX => "%dl",
-            Register::R8 => "%r8b",
-            Register::R9 => "%r9b",
-            Register::RCX => "%cl",
-            Register::RSP => panic!("rsp cannot be 8 bit"),
+            RAX => "%al",
+            RBX => "%bl",
+            RBP => "%bpl",
+            R10 => "%r10b",
+            R11 => "%r11b",
+            R12 => "%r12b",
+            R13 => "%r13b",
+            R14 => "%r14b",
+            R15 => "%r15b",
+            RDI => "%dil",
+            RSI => "%sil",
+            RDX => "%dl",
+            R8 => "%r8b",
+            R9 => "%r9b",
+            RCX => "%cl",
+            RSP => panic!("rsp cannot be 8 bit"),
         }
     }
 

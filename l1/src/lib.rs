@@ -22,23 +22,24 @@ pub enum Register {
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Register::*;
         let reg = match self {
-            Register::RAX => "rax",
-            Register::RBX => "rbx",
-            Register::RBP => "rbp",
-            Register::R10 => "r10",
-            Register::R11 => "r11",
-            Register::R12 => "r12",
-            Register::R13 => "r13",
-            Register::R14 => "r14",
-            Register::R15 => "r15",
-            Register::RDI => "rdi",
-            Register::RSI => "rsi",
-            Register::RDX => "rdx",
-            Register::R8 => "r8",
-            Register::R9 => "r9",
-            Register::RCX => "rcx",
-            Register::RSP => "rsp",
+            RAX => "rax",
+            RBX => "rbx",
+            RBP => "rbp",
+            R10 => "r10",
+            R11 => "r11",
+            R12 => "r12",
+            R13 => "r13",
+            R14 => "r14",
+            R15 => "r15",
+            RDI => "rdi",
+            RSI => "rsi",
+            RDX => "rdx",
+            R8 => "r8",
+            R9 => "r9",
+            RCX => "rcx",
+            RSP => "rsp",
         };
         write!(f, "{}", reg)
     }
@@ -134,14 +135,14 @@ pub enum Instruction {
         src: Value,
     },
     Arithmetic {
-        lhs: Register,
+        dst: Register,
         op: ArithmeticOp,
-        rhs: Value,
+        src: Value,
     },
     Shift {
-        lhs: Register,
+        dst: Register,
         op: ShiftOp,
-        rhs: Value,
+        src: Value,
     },
     StoreArithmetic {
         dst: Register,
@@ -191,49 +192,50 @@ pub enum Instruction {
 
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Instruction::*;
         match self {
-            Instruction::Assign { dst, src } => write!(f, "{} <- {}", dst, src),
-            Instruction::Load { dst, src, offset } => {
+            Assign { dst, src } => write!(f, "{} <- {}", dst, src),
+            Load { dst, src, offset } => {
                 write!(f, "{} <- mem {} {}", dst, src, offset)
             }
-            Instruction::Store { dst, offset, src } => {
+            Store { dst, offset, src } => {
                 write!(f, "mem {} {} <- {}", dst, offset, src)
             }
-            Instruction::Arithmetic { lhs, op, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
-            Instruction::Shift { lhs, op, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
-            Instruction::StoreArithmetic {
+            Arithmetic { dst, op, src } => write!(f, "{} {} {}", dst, op, src),
+            Shift { dst, op, src } => write!(f, "{} {} {}", dst, op, src),
+            StoreArithmetic {
                 dst,
                 offset,
                 op,
                 src,
             } => write!(f, "mem {} {} {} {}", dst, offset, op, src),
-            Instruction::LoadArithmetic {
+            LoadArithmetic {
                 dst,
                 op,
                 src,
                 offset,
             } => write!(f, "{} {} mem {} {}", dst, op, src, offset),
-            Instruction::Compare { dst, lhs, op, rhs } => {
+            Compare { dst, lhs, op, rhs } => {
                 write!(f, "{} <- {} {} {}", dst, lhs, op, rhs)
             }
-            Instruction::CJump {
+            CJump {
                 lhs,
                 op,
                 rhs,
                 label,
             } => write!(f, "cjump {} {} {} :{}", lhs, op, rhs, label),
-            Instruction::Label(label) => write!(f, ":{}", label),
-            Instruction::Goto(label) => write!(f, "goto :{}", label),
-            Instruction::Return => write!(f, "return"),
-            Instruction::Call { callee, args } => write!(f, "call {} {}", callee, args),
-            Instruction::Print => write!(f, "call print 1"),
-            Instruction::Input => write!(f, "call input 0"),
-            Instruction::Allocate => write!(f, "call allocate 2"),
-            Instruction::TupleError => write!(f, "call tuple-error 3"),
-            Instruction::TensorError(args) => write!(f, "call tensor-error {}", args),
-            Instruction::Increment(reg) => write!(f, "{}++", reg),
-            Instruction::Decrement(reg) => write!(f, "{}--", reg),
-            Instruction::LEA {
+            Label(label) => write!(f, ":{}", label),
+            Goto(label) => write!(f, "goto :{}", label),
+            Return => write!(f, "return"),
+            Call { callee, args } => write!(f, "call {} {}", callee, args),
+            Print => write!(f, "call print 1"),
+            Input => write!(f, "call input 0"),
+            Allocate => write!(f, "call allocate 2"),
+            TupleError => write!(f, "call tuple-error 3"),
+            TensorError(args) => write!(f, "call tensor-error {}", args),
+            Increment(reg) => write!(f, "{}++", reg),
+            Decrement(reg) => write!(f, "{}--", reg),
+            LEA {
                 dst,
                 src,
                 offset,

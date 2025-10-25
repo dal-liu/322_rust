@@ -1,21 +1,25 @@
 use ariadne::{Color, Label, Report, ReportKind, sources};
 use chumsky::prelude::*;
 use l2::*;
-use std::fs;
+use std::{fs, mem};
 
-fn separators<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Copy {
+type L2Extra<'src> = extra::Full<Rich<'src, char>, extra::SimpleState<Interner>, ()>;
+
+fn separators<'src>() -> impl Parser<'src, &'src str, (), L2Extra<'src>> + Copy {
     one_of(" \t").repeated()
 }
 
-fn comment<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> {
+fn comment<'src>() -> impl Parser<'src, &'src str, (), L2Extra<'src>> {
     just("//").ignore_then(none_of('\n').repeated()).padded()
 }
 
-fn write_value<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
-    choice((arg_value(), just("rax").to(Value::Register(Register::RAX)))).padded_by(separators())
+fn write_value<'src>() -> impl Parser<'src, &'src str, Value, L2Extra<'src>> {
+    arg_value()
+        .or(just("rax").to(Value::Register(Register::RAX)))
+        .padded_by(separators())
 }
 
-fn arg_value<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
+fn arg_value<'src>() -> impl Parser<'src, &'src str, Value, L2Extra<'src>> {
     choice((
         just("rdi").to(Value::Register(Register::RDI)),
         just("rsi").to(Value::Register(Register::RSI)),
@@ -27,44 +31,41 @@ fn arg_value<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src
     .padded_by(separators())
 }
 
-fn rcx_or_variable<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
+fn rcx_or_variable<'src>() -> impl Parser<'src, &'src str, Value, L2Extra<'src>> {
     just("rcx")
         .to(Value::Register(Register::RCX))
-        .or(variable_name().map(|var| Value::Variable(var)))
+        .or(variable_name().map_with(|var, e| Value::Variable(e.state().intern(var))))
         .padded_by(separators())
 }
 
-fn value<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
+fn value<'src>() -> impl Parser<'src, &'src str, Value, L2Extra<'src>> {
     choice((
         register_variable_number(),
-        function_name().map(|callee| Value::Function(callee)),
-        label_name().map(|label| Value::Label(label)),
+        function_name().map_with(|callee, e| Value::Function(e.state().intern(callee))),
+        label_name().map_with(|label, e| Value::Label(e.state().intern(label))),
     ))
     .padded_by(separators())
 }
 
-fn register_variable_number<'src>()
--> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
+fn register_variable_number<'src>() -> impl Parser<'src, &'src str, Value, L2Extra<'src>> {
     register_or_variable()
         .or(number().map(|num| Value::Number(num)))
         .padded_by(separators())
 }
 
-fn write_or_function<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>> {
+fn write_or_function<'src>() -> impl Parser<'src, &'src str, Value, L2Extra<'src>> {
     write_value()
-        .or(function_name().map(|callee| Value::Function(callee)))
+        .or(function_name().map_with(|callee, e| Value::Function(e.state().intern(callee))))
         .padded_by(separators())
 }
 
-fn register_or_variable<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>>
-{
+fn register_or_variable<'src>() -> impl Parser<'src, &'src str, Value, L2Extra<'src>> {
     write_value()
         .or(just("rsp").to(Value::Register(Register::RSP)))
         .padded_by(separators())
 }
 
-fn arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, extra::Err<Rich<'src, char>>>
-{
+fn arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, L2Extra<'src>> {
     choice((
         memory_arithmetic_op(),
         just("*=").to(ArithmeticOp::MultEq),
@@ -73,7 +74,7 @@ fn arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, extra::Er
     .padded_by(separators())
 }
 
-fn shift_op<'src>() -> impl Parser<'src, &'src str, ShiftOp, extra::Err<Rich<'src, char>>> {
+fn shift_op<'src>() -> impl Parser<'src, &'src str, ShiftOp, L2Extra<'src>> {
     choice((
         just("<<=").to(ShiftOp::LeftShiftEq),
         just(">>=").to(ShiftOp::RightShiftEq),
@@ -81,7 +82,7 @@ fn shift_op<'src>() -> impl Parser<'src, &'src str, ShiftOp, extra::Err<Rich<'sr
     .padded_by(separators())
 }
 
-fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp, extra::Err<Rich<'src, char>>> {
+fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp, L2Extra<'src>> {
     choice((
         just("<=").to(CompareOp::LessEq),
         just("<").to(CompareOp::Less),
@@ -90,11 +91,11 @@ fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp, extra::Err<Rich
     .padded_by(separators())
 }
 
-fn multiplicative_of_8<'src>() -> impl Parser<'src, &'src str, i64, extra::Err<Rich<'src, char>>> {
+fn multiplicative_of_8<'src>() -> impl Parser<'src, &'src str, i64, L2Extra<'src>> {
     number().filter(|n| n % 8 == 0).padded_by(separators())
 }
 
-fn number<'src>() -> impl Parser<'src, &'src str, i64, extra::Err<Rich<'src, char>>> {
+fn number<'src>() -> impl Parser<'src, &'src str, i64, L2Extra<'src>> {
     just('+')
         .to(1)
         .or(just('-').to(-1))
@@ -105,40 +106,38 @@ fn number<'src>() -> impl Parser<'src, &'src str, i64, extra::Err<Rich<'src, cha
         .padded_by(separators())
 }
 
-fn function_name<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> {
+fn function_name<'src>() -> impl Parser<'src, &'src str, &'src str, L2Extra<'src>> {
     just('@')
-        .ignore_then(text::ascii::ident().map(|s: &str| s.to_string()))
+        .ignore_then(text::ascii::ident())
         .padded_by(separators())
 }
 
-fn label_name<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> {
+fn label_name<'src>() -> impl Parser<'src, &'src str, &'src str, L2Extra<'src>> {
     just(':')
-        .ignore_then(text::ascii::ident().map(|s: &str| s.to_string()))
+        .ignore_then(text::ascii::ident())
         .padded_by(separators())
 }
 
-fn variable_name<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> {
+fn variable_name<'src>() -> impl Parser<'src, &'src str, &'src str, L2Extra<'src>> {
     just('%')
-        .ignore_then(text::ascii::ident().map(|s: &str| s.to_string()))
+        .ignore_then(text::ascii::ident())
         .padded_by(separators())
 }
 
-fn rcx_variable_number<'src>() -> impl Parser<'src, &'src str, Value, extra::Err<Rich<'src, char>>>
-{
+fn rcx_variable_number<'src>() -> impl Parser<'src, &'src str, Value, L2Extra<'src>> {
     rcx_or_variable()
         .or(number().map(|num| Value::Number(num)))
         .padded_by(separators())
 }
 
-fn memory_arithmetic_op<'src>()
--> impl Parser<'src, &'src str, ArithmeticOp, extra::Err<Rich<'src, char>>> {
+fn memory_arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, L2Extra<'src>> {
     just("+=")
         .to(ArithmeticOp::PlusEq)
         .or(just("-=").to(ArithmeticOp::MinusEq))
         .padded_by(separators())
 }
 
-fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, extra::Err<Rich<'src, char>>> {
+fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, L2Extra<'src>> {
     let arrow = just("<-").padded_by(separators());
 
     let mem = just("mem").padded_by(separators());
@@ -173,12 +172,12 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, extra::Err<R
     let arithmetic = write_value()
         .then(arithmetic_op())
         .then(register_variable_number())
-        .map(|((lhs, op), rhs)| Instruction::Arithmetic { lhs, op, rhs });
+        .map(|((dst, op), src)| Instruction::Arithmetic { dst, op, src });
 
     let shift = write_value()
         .then(shift_op())
         .then(rcx_variable_number())
-        .map(|((lhs, op), rhs)| Instruction::Shift { lhs, op, rhs });
+        .map(|((dst, op), src)| Instruction::Shift { dst, op, src });
 
     let store_arithmetic = mem
         .ignore_then(register_or_variable())
@@ -221,15 +220,15 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, extra::Err<R
             lhs,
             op,
             rhs,
-            label,
+            label: label.to_string(),
         });
 
-    let label_inst = label_name().map(|label| Instruction::Label(label));
+    let label_inst = label_name().map(|label| Instruction::Label(label.to_string()));
 
     let goto = just("goto")
         .padded_by(separators())
         .ignore_then(label_name())
-        .map(|label| Instruction::Goto(label));
+        .map(|label| Instruction::Goto(label.to_string()));
 
     let return_inst = just("return")
         .padded_by(separators())
@@ -323,7 +322,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, extra::Err<R
     .padded()
 }
 
-fn function<'src>() -> impl Parser<'src, &'src str, Function, extra::Err<Rich<'src, char>>> {
+fn function<'src>() -> impl Parser<'src, &'src str, Function, L2Extra<'src>> {
     just('(')
         .padded_by(comment().repeated())
         .padded()
@@ -337,13 +336,13 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function, extra::Err<Rich<'s
         )
         .then_ignore(just(')').padded_by(comment().repeated()).padded())
         .map(|((name, args), instructions)| Function {
-            name,
+            name: name.to_string(),
             args,
             basic_blocks: collect_basic_blocks(instructions),
         })
 }
 
-fn program<'src>() -> impl Parser<'src, &'src str, Program, extra::Err<Rich<'src, char>>> {
+fn program<'src>() -> impl Parser<'src, &'src str, Program, L2Extra<'src>> {
     just('(')
         .padded_by(comment().repeated())
         .padded()
@@ -355,9 +354,10 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program, extra::Err<Rich<'src
                 .padded()
                 .then(any().repeated()),
         )
-        .map(|(entry_point, functions)| Program {
-            entry_point,
+        .map_with(|(entry_point, functions), e| Program {
+            entry_point: entry_point.to_string(),
             functions,
+            interner: mem::take(e.state()),
         })
 }
 
@@ -426,7 +426,10 @@ fn collect_basic_blocks(instructions: Vec<Instruction>) -> Vec<BasicBlock> {
 pub fn parse_file(file_name: &str) -> Option<Program> {
     let file_name = file_name.to_string();
     let input = fs::read_to_string(&file_name).unwrap();
-    let (output, errors) = program().parse(&input).into_output_errors();
+
+    let (output, errors) = program()
+        .parse_with_state(&input, &mut extra::SimpleState(Interner::default()))
+        .into_output_errors();
 
     errors.into_iter().for_each(|err| {
         Report::build(

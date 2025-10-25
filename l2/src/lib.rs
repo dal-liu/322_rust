@@ -1,6 +1,10 @@
+use std::collections::HashMap;
 use std::fmt;
 
 const MAX_SUCCESSORS: usize = 2;
+
+pub type SymbolId = usize;
+pub type BlockId = usize;
 
 #[derive(Debug, Clone)]
 pub enum Register {
@@ -12,21 +16,61 @@ pub enum Register {
     R9,
     RCX,
     RSP,
+    R10,
+    R11,
+    R12,
+    R13,
+    R14,
+    R15,
+    RBP,
+    RBX,
 }
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Register::*;
         let reg = match self {
-            Register::RAX => "rax",
-            Register::RDI => "rdi",
-            Register::RSI => "rsi",
-            Register::RDX => "rdx",
-            Register::R8 => "r8",
-            Register::R9 => "r9",
-            Register::RCX => "rcx",
-            Register::RSP => "rsp",
+            RAX => "rax",
+            RDI => "rdi",
+            RSI => "rsi",
+            RDX => "rdx",
+            R8 => "r8",
+            R9 => "r9",
+            RCX => "rcx",
+            RSP => "rsp",
+            R10 => "r10",
+            R11 => "r11",
+            R12 => "r12",
+            R13 => "r13",
+            R14 => "r14",
+            R15 => "r15",
+            RBP => "rbp",
+            RBX => "rbx",
         };
         write!(f, "{}", reg)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Interner {
+    map: HashMap<String, SymbolId>,
+    vec: Vec<String>,
+}
+
+impl Interner {
+    pub fn intern(&mut self, name: &str) -> SymbolId {
+        if let Some(&id) = self.map.get(name) {
+            id
+        } else {
+            let id = self.vec.len();
+            self.map.insert(name.to_string(), id);
+            self.vec.push(name.to_string());
+            id
+        }
+    }
+
+    pub fn resolve(&self, id: SymbolId) -> &str {
+        &self.vec[id]
     }
 }
 
@@ -34,9 +78,9 @@ impl fmt::Display for Register {
 pub enum Value {
     Register(Register),
     Number(i64),
-    Label(String),
-    Function(String),
-    Variable(String),
+    Label(SymbolId),
+    Function(SymbolId),
+    Variable(SymbolId),
 }
 
 impl fmt::Display for Value {
@@ -126,14 +170,14 @@ pub enum Instruction {
         offset: i64,
     },
     Arithmetic {
-        lhs: Value,
+        dst: Value,
         op: ArithmeticOp,
-        rhs: Value,
+        src: Value,
     },
     Shift {
-        lhs: Value,
+        dst: Value,
         op: ShiftOp,
-        rhs: Value,
+        src: Value,
     },
     StoreArithmetic {
         dst: Value,
@@ -181,54 +225,112 @@ pub enum Instruction {
     },
 }
 
+impl Instruction {
+    // pub fn uses(&self) -> Vec<Value> {
+    //     use Instruction::*;
+    //     match self {
+    //         Assign { src, .. } | Load { src, .. } => {
+    //             if matches!(src, Value::Register(_) | Value::Variable(_)) {
+    //                 vec![src.clone()]
+    //             } else {
+    //                 vec![]
+    //             }
+    //         }
+    //         Store { dst, src, .. }
+    //         | Arithmetic { dst, src, .. }
+    //         | Shift { dst, src, .. }
+    //         | StoreArithmetic { dst, src, .. }
+    //         | LoadArithmetic { dst, src, .. } => {
+    //             let mut uses = vec![];
+    //             if let Value::Variable(_) = dst {
+    //                 uses.push(dst.clone());
+    //             }
+    //             vec![dst.clone(), src.clone()]
+    //         }
+    //         Compare { lhs, rhs, .. } | CJump { lhs, rhs, .. } => {
+    //             vec![lhs.clone(), rhs.clone()]
+    //         }
+    //         Increment(val) | Decrement(val) => vec![val.clone()],
+    //     }
+    // }
+
+    pub fn defs(&self) -> Vec<Value> {
+        use Instruction::*;
+        use Register::*;
+
+        match self {
+            Assign { dst, .. }
+            | Load { dst, .. }
+            | StackArg { dst, .. }
+            | Arithmetic { dst, .. }
+            | Shift { dst, .. }
+            | LoadArithmetic { dst, .. }
+            | Compare { dst, .. }
+            | LEA { dst, .. } => vec![dst.clone()],
+
+            Increment(val) | Decrement(val) => vec![val.clone()],
+
+            Call { .. } | Print | Input | Allocate | TupleError | TensorError(_) => {
+                let callee_save = [R10, R11, R8, R9, RAX, RCX, RDI, RDX, RSI];
+                callee_save.into_iter().map(Value::Register).collect()
+            }
+
+            Store { .. } | StoreArithmetic { .. } | CJump { .. } | Label(_) | Goto(_) | Return => {
+                vec![]
+            }
+        }
+    }
+}
+
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Instruction::*;
         match self {
-            Instruction::Assign { dst, src } => write!(f, "{} <- {}", dst, src),
-            Instruction::Load { dst, src, offset } => {
+            Assign { dst, src } => write!(f, "{} <- {}", dst, src),
+            Load { dst, src, offset } => {
                 write!(f, "{} <- mem {} {}", dst, src, offset)
             }
-            Instruction::Store { dst, offset, src } => {
+            Store { dst, offset, src } => {
                 write!(f, "mem {} {} <- {}", dst, offset, src)
             }
-            Instruction::StackArg { dst, offset } => {
+            StackArg { dst, offset } => {
                 write!(f, "{} <- stack-arg {}", dst, offset)
             }
-            Instruction::Arithmetic { lhs, op, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
-            Instruction::Shift { lhs, op, rhs } => write!(f, "{} {} {}", lhs, op, rhs),
-            Instruction::StoreArithmetic {
+            Arithmetic { dst, op, src } => write!(f, "{} {} {}", dst, op, src),
+            Shift { dst, op, src } => write!(f, "{} {} {}", dst, op, src),
+            StoreArithmetic {
                 dst,
                 offset,
                 op,
                 src,
             } => write!(f, "mem {} {} {} {}", dst, offset, op, src),
-            Instruction::LoadArithmetic {
+            LoadArithmetic {
                 dst,
                 op,
                 src,
                 offset,
             } => write!(f, "{} {} mem {} {}", dst, op, src, offset),
-            Instruction::Compare { dst, lhs, op, rhs } => {
+            Compare { dst, lhs, op, rhs } => {
                 write!(f, "{} <- {} {} {}", dst, lhs, op, rhs)
             }
-            Instruction::CJump {
+            CJump {
                 lhs,
                 op,
                 rhs,
                 label,
             } => write!(f, "cjump {} {} {} :{}", lhs, op, rhs, label),
-            Instruction::Label(label) => write!(f, ":{}", label),
-            Instruction::Goto(label) => write!(f, "goto :{}", label),
-            Instruction::Return => write!(f, "return"),
-            Instruction::Call { callee, args } => write!(f, "call {} {}", callee, args),
-            Instruction::Print => write!(f, "call print 1"),
-            Instruction::Input => write!(f, "call input 0"),
-            Instruction::Allocate => write!(f, "call allocate 2"),
-            Instruction::TupleError => write!(f, "call tuple-error 3"),
-            Instruction::TensorError(args) => write!(f, "call tensor-error {}", args),
-            Instruction::Increment(reg) => write!(f, "{}++", reg),
-            Instruction::Decrement(reg) => write!(f, "{}--", reg),
-            Instruction::LEA {
+            Label(label) => write!(f, ":{}", label),
+            Goto(label) => write!(f, "goto :{}", label),
+            Return => write!(f, "return"),
+            Call { callee, args } => write!(f, "call {} {}", callee, args),
+            Print => write!(f, "call print 1"),
+            Input => write!(f, "call input 0"),
+            Allocate => write!(f, "call allocate 2"),
+            TupleError => write!(f, "call tuple-error 3"),
+            TensorError(args) => write!(f, "call tensor-error {}", args),
+            Increment(reg) => write!(f, "{}++", reg),
+            Decrement(reg) => write!(f, "{}--", reg),
+            LEA {
                 dst,
                 src,
                 offset,
@@ -283,6 +385,7 @@ impl fmt::Display for Function {
 pub struct Program {
     pub entry_point: String,
     pub functions: Vec<Function>,
+    pub interner: Interner,
 }
 
 impl fmt::Display for Program {

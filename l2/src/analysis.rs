@@ -1,28 +1,30 @@
 use l2::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AnalysisResult {
-    pub gen_set: Vec<Vec<HashSet<Value>>>,
-    pub kill_set: Vec<Vec<HashSet<Value>>>,
-    pub in_set: Vec<Vec<HashSet<Value>>>,
-    pub out_set: Vec<Vec<HashSet<Value>>>,
+    pub gen_: Vec<Vec<HashSet<Value>>>,
+    pub kill: Vec<Vec<HashSet<Value>>>,
+    pub in_: Vec<Vec<HashSet<Value>>>,
+    pub out: Vec<Vec<HashSet<Value>>>,
 }
 
-#[derive(Debug)]
-struct Worklist {
-    queue: VecDeque<usize>,
-    set: HashSet<usize>,
+#[derive(Debug, Default)]
+struct Worklist<'a> {
+    queue: VecDeque<&'a BlockId>,
+    set: HashSet<&'a BlockId>,
 }
 
-impl Worklist {
-    pub fn push(&mut self, index: usize) {
-        if self.set.insert(index) {
-            self.queue.push_back(index);
+impl<'a> Worklist<'a> {
+    pub fn extend<I: IntoIterator<Item = &'a BlockId>>(&mut self, indexes: I) {
+        for i in indexes {
+            if self.set.insert(i) {
+                self.queue.push_back(i);
+            }
         }
     }
 
-    pub fn pop(&mut self) -> Option<usize> {
+    pub fn pop(&mut self) -> Option<&'a BlockId> {
         if let Some(index) = self.queue.pop_front() {
             self.set.remove(&index);
             Some(index)
@@ -30,58 +32,232 @@ impl Worklist {
             None
         }
     }
+}
 
-    fn is_empty(&self) -> bool {
-        self.queue.is_empty()
+pub fn compute_liveness(func: &Function) -> AnalysisResult {
+    let num_blocks = func.basic_blocks.len();
+    let mut block_gen: Vec<HashSet<Value>> = vec![HashSet::new(); num_blocks];
+    let mut block_kill: Vec<HashSet<Value>> = vec![HashSet::new(); num_blocks];
+
+    for (i, block) in func.basic_blocks.iter().enumerate() {
+        for inst in &block.instructions {
+            for use_ in instruction_uses(inst) {
+                if !block_gen[i].contains(&use_) {
+                    block_gen[i].insert(use_);
+                }
+            }
+            for def in instruction_defs(inst) {
+                block_kill[i].insert(def);
+            }
+        }
+    }
+
+    let cfg = &func.cfg;
+    let mut block_in: Vec<HashSet<&Value>> = vec![HashSet::new(); num_blocks];
+    let mut block_out: Vec<HashSet<&Value>> = vec![HashSet::new(); num_blocks];
+    let mut worklist = Worklist::default();
+    worklist.extend(func.basic_blocks.iter().map(|block| &block.id));
+
+    while let Some(id) = worklist.pop() {
+        let i = id.0;
+
+        block_out[i] = cfg.successors[i]
+            .iter()
+            .flat_map(|succ| block_in[succ.0].iter().copied())
+            .collect();
+
+        let temp: HashSet<&Value> = block_gen[i]
+            .iter()
+            .chain(
+                block_out[id.0]
+                    .difference(&block_kill[i].iter().collect())
+                    .copied(),
+            )
+            .collect();
+
+        if temp != block_in[i] {
+            block_in[i] = temp;
+            worklist.extend(cfg.predecessors[i].iter());
+        }
+    }
+
+    let mut gen_ = empty_dataflow_set(func);
+    let mut kill = empty_dataflow_set(func);
+    let mut in_ = empty_dataflow_set(func);
+    let mut out = empty_dataflow_set(func);
+
+    for block in &func.basic_blocks {
+        let i = block.id.0;
+
+        for (j, inst) in block.instructions.iter().enumerate().rev() {
+            for use_ in instruction_uses(inst) {
+                gen_[i][j].insert(use_);
+            }
+
+            for def in instruction_defs(inst) {
+                kill[i][j].insert(def);
+            }
+
+            in_[i][j] = if j == block.instructions.len() - 1 {
+                block_out[i].iter().map(|&val| val.clone()).collect()
+            } else {
+                out[i][j + 1].clone()
+            };
+
+            out[i][j] = gen_[i][j]
+                .union(&in_[i][j].difference(&kill[i][j]).cloned().collect())
+                .cloned()
+                .collect();
+        }
+    }
+
+    AnalysisResult {
+        gen_,
+        kill,
+        in_,
+        out,
     }
 }
 
-/* fn compute_liveness(func: &Function) -> AnalysisResult {
-    // TODO: this
-} */
+fn instruction_uses(inst: &Instruction) -> Vec<Value> {
+    use Instruction::*;
+    use Register::*;
 
-pub fn compute_targets(func: &mut Function) {
-    let blocks = &mut func.basic_blocks;
-    let last_index = blocks.len().saturating_sub(1);
+    match inst {
+        Assign { src, .. } | Load { src, .. } => is_gp_variable(src)
+            .then(|| vec![src.clone()])
+            .unwrap_or_default(),
 
-    let label_to_index: HashMap<_, _> = blocks
-        .iter()
-        .enumerate()
-        .filter_map(|(i, block)| {
-            if let Some(Instruction::Label(label)) = block.instructions.first() {
-                Some((label.clone(), i))
-            } else {
-                None
+        Store { dst, src, .. }
+        | Arithmetic { dst, src, .. }
+        | Shift { dst, src, .. }
+        | StoreArithmetic { dst, src, .. }
+        | LoadArithmetic { dst, src, .. } => {
+            let mut uses = Vec::new();
+            for val in [dst, src] {
+                if is_gp_variable(val) {
+                    uses.push(val.clone());
+                }
             }
-        })
-        .collect();
-
-    for i in 0..blocks.len() {
-        let block = &mut blocks[i];
-        let last_inst = block.instructions.last();
-
-        block.target = match last_inst {
-            Some(Instruction::CJump { label, .. }) => {
-                let j = label_to_index
-                    .get(label)
-                    .copied()
-                    .unwrap_or_else(|| panic!("invalid label {}", label));
-                let k = if i < last_index { Some(i + 1) } else { None };
-                Target::Indexes([Some(j), k])
-            }
-            Some(Instruction::Goto(label)) => {
-                let j = label_to_index
-                    .get(label)
-                    .copied()
-                    .unwrap_or_else(|| panic!("invalid label {}", label));
-                Target::Indexes([Some(j), None])
-            }
-            Some(Instruction::Return) => Target::Indexes([None, None]),
-            Some(_) => {
-                let k = if i < last_index { Some(i + 1) } else { None };
-                Target::Indexes([k, None])
-            }
-            None => panic!("empty block in {}", &func.name),
+            uses
         }
+
+        StackArg { .. } | Label(_) | Goto(_) | Input => Vec::new(),
+
+        Compare { lhs, rhs, .. } | CJump { lhs, rhs, .. } => {
+            let mut uses = Vec::new();
+            for val in [lhs, rhs] {
+                if is_gp_variable(val) {
+                    uses.push(val.clone());
+                }
+            }
+            uses
+        }
+
+        Return => {
+            let result_and_callee_save = [RAX, R12, R13, R14, R15, RBP, RBX];
+            result_and_callee_save
+                .into_iter()
+                .map(Value::Register)
+                .collect()
+        }
+
+        Call { callee, args } => {
+            let args = *args;
+            let mut uses = Vec::new();
+            if is_gp_variable(callee) {
+                uses.push(callee.clone());
+            }
+            if args >= 1 {
+                uses.push(Value::Register(RDI));
+            }
+            if args >= 2 {
+                uses.push(Value::Register(RSI));
+            }
+            if args >= 3 {
+                uses.push(Value::Register(RDX));
+            }
+            if args >= 4 {
+                uses.push(Value::Register(RCX));
+            }
+            if args >= 5 {
+                uses.push(Value::Register(R8));
+            }
+            if args >= 6 {
+                uses.push(Value::Register(R9));
+            }
+            uses
+        }
+
+        Print => vec![Value::Register(RDI)],
+
+        Allocate => vec![Value::Register(RDI), Value::Register(RSI)],
+
+        TupleError => vec![
+            Value::Register(RDI),
+            Value::Register(RSI),
+            Value::Register(RDX),
+        ],
+
+        TensorError(args) => {
+            let args = *args;
+            let mut uses = Vec::new();
+            if args >= 1 {
+                uses.push(Value::Register(RDI));
+            }
+            if args >= 3 {
+                uses.extend_from_slice(&[Value::Register(RSI), Value::Register(RDX)]);
+            }
+            if args == 4 {
+                uses.push(Value::Register(RCX));
+            }
+            uses
+        }
+
+        Increment(val) | Decrement(val) => vec![val.clone()],
+
+        LEA { src, offset, .. } => vec![src.clone(), offset.clone()],
     }
+}
+
+fn instruction_defs(inst: &Instruction) -> Vec<Value> {
+    use Instruction::*;
+    use Register::*;
+
+    match inst {
+        Assign { dst, .. }
+        | Load { dst, .. }
+        | StackArg { dst, .. }
+        | Arithmetic { dst, .. }
+        | Shift { dst, .. }
+        | LoadArithmetic { dst, .. }
+        | Compare { dst, .. }
+        | LEA { dst, .. } => vec![dst.clone()],
+
+        Store { .. } | StoreArithmetic { .. } | CJump { .. } | Label(_) | Goto(_) | Return => {
+            Vec::new()
+        }
+
+        Call { .. } | Print | Input | Allocate | TupleError | TensorError(_) => {
+            let caller_save = [R10, R11, R8, R9, RAX, RCX, RDI, RDX, RSI];
+            caller_save.into_iter().map(Value::Register).collect()
+        }
+
+        Increment(val) | Decrement(val) => vec![val.clone()],
+    }
+}
+
+fn is_gp_variable(val: &Value) -> bool {
+    match val {
+        Value::Variable(_) => true,
+        Value::Register(reg) if !matches!(reg, Register::RSP) => true,
+        _ => false,
+    }
+}
+
+fn empty_dataflow_set(func: &Function) -> Vec<Vec<HashSet<Value>>> {
+    func.basic_blocks
+        .iter()
+        .map(|block| vec![HashSet::new(); block.instructions.len()])
+        .collect()
 }

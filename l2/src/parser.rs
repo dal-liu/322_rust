@@ -216,19 +216,19 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, L2Extra<'src
         .then(compare_op())
         .then(register_variable_number())
         .then(label_name())
-        .map(|(((lhs, op), rhs), label)| Instruction::CJump {
+        .map_with(|(((lhs, op), rhs), label), e| Instruction::CJump {
             lhs,
             op,
             rhs,
-            label: label.to_string(),
+            label: e.state().intern(label),
         });
 
-    let label_inst = label_name().map(|label| Instruction::Label(label.to_string()));
+    let label_inst = label_name().map_with(|label, e| Instruction::Label(e.state().intern(label)));
 
     let goto = just("goto")
         .padded_by(separators())
         .ignore_then(label_name())
-        .map(|label| Instruction::Goto(label.to_string()));
+        .map_with(|label, e| Instruction::Goto(e.state().intern(label)));
 
     let return_inst = just("return")
         .padded_by(separators())
@@ -335,10 +335,8 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function, L2Extra<'src>> {
                 .collect::<Vec<Instruction>>(),
         )
         .then_ignore(just(')').padded_by(comment().repeated()).padded())
-        .map(|((name, args), instructions)| Function {
-            name: name.to_string(),
-            args,
-            basic_blocks: collect_basic_blocks(instructions),
+        .map_with(|((name, args), instructions), e| {
+            Function::build(e.state().intern(name), args, instructions)
         })
 }
 
@@ -355,72 +353,10 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program, L2Extra<'src>> {
                 .then(any().repeated()),
         )
         .map_with(|(entry_point, functions), e| Program {
-            entry_point: entry_point.to_string(),
+            entry_point: e.state().intern(entry_point),
             functions,
             interner: mem::take(e.state()),
         })
-}
-
-fn collect_basic_blocks(instructions: Vec<Instruction>) -> Vec<BasicBlock> {
-    let mut blocks = vec![BasicBlock {
-        instructions: vec![],
-        target: Target::Label(None),
-    }];
-
-    for inst in instructions {
-        let block = blocks.last_mut().unwrap();
-
-        let cloned_label = match &inst {
-            Instruction::CJump { label, .. } | Instruction::Goto(label) => Some(label.clone()),
-            _ => None,
-        };
-
-        match inst {
-            Instruction::CJump { .. } | Instruction::Goto(_) => {
-                block.instructions.push(inst);
-
-                if let (Some(src_label), Target::Label(dst_label)) =
-                    (cloned_label, &mut block.target)
-                {
-                    *dst_label = Some(src_label);
-                }
-
-                blocks.push(BasicBlock {
-                    instructions: vec![],
-                    target: Target::Label(None),
-                });
-            }
-            Instruction::Return => {
-                block.instructions.push(inst);
-                blocks.push(BasicBlock {
-                    instructions: vec![],
-                    target: Target::Label(None),
-                });
-            }
-            Instruction::Label(_) => {
-                if block.instructions.is_empty() {
-                    block.instructions.push(inst);
-                } else {
-                    blocks.push(BasicBlock {
-                        instructions: vec![inst],
-                        target: Target::Label(None),
-                    });
-                }
-            }
-            _ => {
-                block.instructions.push(inst);
-            }
-        }
-    }
-
-    if blocks
-        .last()
-        .map_or(false, |block| block.instructions.is_empty())
-    {
-        blocks.pop();
-    }
-
-    blocks
 }
 
 pub fn parse_file(file_name: &str) -> Option<Program> {

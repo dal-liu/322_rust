@@ -23,6 +23,7 @@ pub enum Register {
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Register::*;
+
         let reg = match self {
             RAX => "rax",
             RBX => "rbx",
@@ -56,10 +57,10 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::Register(r) => write!(f, "{}", r),
-            Value::Number(n) => write!(f, "{}", n),
-            Value::Label(s) => write!(f, ":{}", s),
-            Value::Function(s) => write!(f, "@{}", s),
+            Self::Register(r) => write!(f, "{}", r),
+            Self::Number(n) => write!(f, "{}", n),
+            Self::Label(s) => write!(f, ":{}", s),
+            Self::Function(s) => write!(f, "@{}", s),
         }
     }
 }
@@ -75,10 +76,10 @@ pub enum ArithmeticOp {
 impl fmt::Display for ArithmeticOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = match self {
-            ArithmeticOp::PlusEq => "+=",
-            ArithmeticOp::MinusEq => "-=",
-            ArithmeticOp::MultEq => "*=",
-            ArithmeticOp::AndEq => "&=",
+            Self::PlusEq => "+=",
+            Self::MinusEq => "-=",
+            Self::MultEq => "*=",
+            Self::AndEq => "&=",
         };
         write!(f, "{}", op)
     }
@@ -93,8 +94,8 @@ pub enum ShiftOp {
 impl fmt::Display for ShiftOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = match self {
-            ShiftOp::LeftShiftEq => "<<=",
-            ShiftOp::RightShiftEq => ">>=",
+            Self::LeftShiftEq => "<<=",
+            Self::RightShiftEq => ">>=",
         };
         write!(f, "{}", op)
     }
@@ -110,9 +111,9 @@ pub enum CompareOp {
 impl fmt::Display for CompareOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = match self {
-            CompareOp::Less => "<",
-            CompareOp::LessEq => "<=",
-            CompareOp::Equal => "=",
+            Self::Less => "<",
+            Self::LessEq => "<=",
+            Self::Equal => "=",
         };
         write!(f, "{}", op)
     }
@@ -193,6 +194,7 @@ pub enum Instruction {
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Instruction::*;
+
         match self {
             Assign { dst, src } => write!(f, "{} <- {}", dst, src),
             Load { dst, src, offset } => {

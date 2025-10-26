@@ -73,12 +73,13 @@ impl CodeGenerator {
                 writeln!(self.stream, "\tmovq {}(%{}), %{}", offset, src, dst)
             }
             Store { dst, offset, src } => {
-                let stored = if let Value::Label(label) = src {
-                    format!("$_{}", label)
-                } else {
-                    self.format_value(src)
-                };
-                writeln!(self.stream, "\tmovq {}, {}(%{})", stored, offset, dst)
+                writeln!(
+                    self.stream,
+                    "\tmovq {}, {}(%{})",
+                    self.format_value(src),
+                    offset,
+                    dst
+                )
             }
             Arithmetic { dst, op, src } => {
                 let arith = match op {

@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::fmt;
 
 pub trait DisplayResolved {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result;
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result;
 
-    fn resolved<'a>(&'a self, interner: &'a Interner) -> DisplayResolvedWrapper<'a, Self>
+    fn resolved<'a>(&'a self, interner: &'a StringInterner) -> DisplayResolvedWrapper<'a, Self>
     where
         Self: Sized,
     {
@@ -17,7 +17,7 @@ pub trait DisplayResolved {
 
 pub struct DisplayResolvedWrapper<'a, T: ?Sized> {
     inner: &'a T,
-    interner: &'a Interner,
+    interner: &'a StringInterner,
 }
 
 impl<'a, T: DisplayResolved + ?Sized> fmt::Display for DisplayResolvedWrapper<'a, T> {
@@ -81,7 +81,7 @@ pub enum Value {
 }
 
 impl DisplayResolved for Value {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result {
         match self {
             Self::Register(reg) => write!(f, "{}", reg),
             Self::Number(num) => write!(f, "{}", num),
@@ -96,7 +96,7 @@ impl DisplayResolved for Value {
 pub struct SymbolId(pub usize);
 
 impl DisplayResolved for SymbolId {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result {
         write!(f, "{}", interner.resolve(self))
     }
 }
@@ -232,7 +232,7 @@ pub enum Instruction {
 }
 
 impl DisplayResolved for Instruction {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result {
         use Instruction::*;
         match self {
             Assign { dst, src } => {
@@ -362,7 +362,7 @@ pub struct BasicBlock {
 }
 
 impl DisplayResolved for BasicBlock {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result {
         for inst in &self.instructions {
             writeln!(f, "\t{}", inst.resolved(interner))?;
         }
@@ -375,7 +375,7 @@ pub struct Function {
     pub name: SymbolId,
     pub args: i64,
     pub basic_blocks: Vec<BasicBlock>,
-    pub interner: Interner,
+    pub interner: StringInterner,
     pub cfg: ControlFlowGraph,
 }
 
@@ -384,7 +384,7 @@ impl Function {
         name: SymbolId,
         args: i64,
         instructions: Vec<Instruction>,
-        interner: Interner,
+        interner: StringInterner,
     ) -> Self {
         let mut basic_blocks = vec![BasicBlock {
             id: BlockId(0),
@@ -454,12 +454,12 @@ impl fmt::Display for Function {
 }
 
 #[derive(Debug, Default)]
-pub struct Interner {
+pub struct StringInterner {
     map: HashMap<String, SymbolId>,
     vec: Vec<String>,
 }
 
-impl Interner {
+impl StringInterner {
     pub fn intern(&mut self, name: &str) -> SymbolId {
         if let Some(id) = self.map.get(name) {
             id.clone()

@@ -3,7 +3,7 @@ use chumsky::prelude::*;
 use l2::*;
 use std::{fs, mem};
 
-type MyExtra<'src> = extra::Full<Rich<'src, char>, extra::SimpleState<Interner>, ()>;
+type MyExtra<'src> = extra::Full<Rich<'src, char>, extra::SimpleState<StringInterner>, ()>;
 
 fn separators<'src>() -> impl Parser<'src, &'src str, (), MyExtra<'src>> + Copy {
     one_of(" \t").repeated()
@@ -368,7 +368,7 @@ pub fn parse_file(file_name: &str) -> Option<Program> {
     let input = fs::read_to_string(&file_name).unwrap_or_else(|e| panic!("{}", e));
 
     let (output, errors) = program()
-        .parse_with_state(&input, &mut extra::SimpleState(Interner::default()))
+        .parse_with_state(&input, &mut extra::SimpleState(StringInterner::default()))
         .into_output_errors();
 
     errors.into_iter().for_each(|err| {
@@ -396,7 +396,7 @@ pub fn parse_function_file(file_name: &str) -> Option<Function> {
     let input = fs::read_to_string(&file_name).unwrap_or_else(|e| panic!("{}", e));
 
     let (output, errors) = function()
-        .parse_with_state(&input, &mut extra::SimpleState(Interner::default()))
+        .parse_with_state(&input, &mut extra::SimpleState(StringInterner::default()))
         .into_output_errors();
 
     errors.into_iter().for_each(|err| {

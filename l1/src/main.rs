@@ -20,7 +20,7 @@ fn main() {
     let cli = Cli::parse();
     if let Some(prog) = parse_file(&cli.source) {
         if cli.verbose {
-            println!("{}", &prog);
+            print!("{}", &prog);
         }
         if cli.generate == 1 {
             generate_code(&prog).unwrap()

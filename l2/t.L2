@@ -1,0 +1,5 @@
+(@foo
+0
+rax <- 1
+return
+)

@@ -33,6 +33,9 @@ fn main() {
     }
 
     if let Some(prog) = parse_file(file_name) {
+        if cli.verbose {
+            print!("{}", &prog);
+        }
         for func in &prog.functions {
             let result = compute_liveness(func);
             if cli.liveness {

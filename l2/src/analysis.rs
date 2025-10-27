@@ -15,12 +15,12 @@ impl DisplayResolved for AnalysisResult {
 
         for vec in &self.in_ {
             for set in vec {
-                let line = set
+                let mut line = set
                     .iter()
                     .map(|val| format!("{}", val.resolved(interner)))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                writeln!(f, "({})", line)?;
+                    .collect::<Vec<_>>();
+                line.sort();
+                writeln!(f, "({})", line.join(" "))?;
             }
         }
 
@@ -28,12 +28,12 @@ impl DisplayResolved for AnalysisResult {
 
         for vec in &self.out {
             for set in vec {
-                let line = set
+                let mut line = set
                     .iter()
                     .map(|val| format!("{}", val.resolved(interner)))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                writeln!(f, "({})", line)?;
+                    .collect::<Vec<_>>();
+                line.sort();
+                writeln!(f, "({})", line.join(" "))?;
             }
         }
 
@@ -73,14 +73,12 @@ pub fn compute_liveness(func: &Function) -> AnalysisResult {
 
     for (i, block) in func.basic_blocks.iter().enumerate() {
         for inst in &block.instructions {
-            for use_ in instruction_uses(inst) {
-                if !block_gen[i].contains(&use_) {
-                    block_gen[i].insert(use_);
-                }
-            }
-            for def in instruction_defs(inst) {
-                block_kill[i].insert(def);
-            }
+            block_gen[i].extend(
+                uses(inst)
+                    .into_iter()
+                    .filter(|use_| !block_kill[i].contains(use_)),
+            );
+            block_kill[i].extend(defs(inst).into_iter());
         }
     }
 
@@ -122,22 +120,17 @@ pub fn compute_liveness(func: &Function) -> AnalysisResult {
         let i = block.id.0;
 
         for (j, inst) in block.instructions.iter().enumerate().rev() {
-            for use_ in instruction_uses(inst) {
-                gen_[i][j].insert(use_);
-            }
+            gen_[i][j].extend(uses(inst).into_iter());
+            kill[i][j].extend(defs(inst).into_iter());
 
-            for def in instruction_defs(inst) {
-                kill[i][j].insert(def);
-            }
-
-            in_[i][j] = if j == block.instructions.len() - 1 {
+            out[i][j] = if j == block.instructions.len() - 1 {
                 block_out[i].iter().map(|&val| val.clone()).collect()
             } else {
-                out[i][j + 1].clone()
+                in_[i][j + 1].clone()
             };
 
-            out[i][j] = gen_[i][j]
-                .union(&in_[i][j].difference(&kill[i][j]).cloned().collect())
+            in_[i][j] = gen_[i][j]
+                .union(&out[i][j].difference(&kill[i][j]).cloned().collect())
                 .cloned()
                 .collect();
         }
@@ -151,7 +144,7 @@ pub fn compute_liveness(func: &Function) -> AnalysisResult {
     }
 }
 
-fn instruction_uses(inst: &Instruction) -> Vec<Value> {
+fn uses(inst: &Instruction) -> Vec<Value> {
     use Instruction::*;
     use Register::*;
 
@@ -252,7 +245,7 @@ fn instruction_uses(inst: &Instruction) -> Vec<Value> {
     }
 }
 
-fn instruction_defs(inst: &Instruction) -> Vec<Value> {
+fn defs(inst: &Instruction) -> Vec<Value> {
     use Instruction::*;
     use Register::*;
 

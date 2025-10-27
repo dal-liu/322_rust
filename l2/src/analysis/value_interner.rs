@@ -1,4 +1,4 @@
-use crate::analysis::use_def::{defs, uses};
+use crate::analysis::def_use::{defs, uses};
 use l2::*;
 use std::collections::HashMap;
 

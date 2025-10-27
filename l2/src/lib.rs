@@ -394,13 +394,18 @@ impl Function {
         for inst in instructions {
             let block = basic_blocks.last_mut().unwrap();
             match inst {
-                Instruction::CJump { .. } | Instruction::Goto(_) | Instruction::Return => {
+                Instruction::CJump { .. }
+                | Instruction::Goto(_)
+                | Instruction::Return
+                | Instruction::TupleError
+                | Instruction::TensorError(_) => {
                     block.instructions.push(inst);
                     basic_blocks.push(BasicBlock {
                         id: BlockId(basic_blocks.len()),
                         instructions: Vec::new(),
                     });
                 }
+
                 Instruction::Label(_) => {
                     if block.instructions.is_empty() {
                         block.instructions.push(inst);
@@ -411,9 +416,8 @@ impl Function {
                         });
                     }
                 }
-                _ => {
-                    block.instructions.push(inst);
-                }
+
+                _ => block.instructions.push(inst),
             }
         }
 
@@ -512,6 +516,7 @@ impl ControlFlowGraph {
                         cfg.predecessors[block.id.0 + 1].push(block.id.clone());
                     }
                 }
+
                 Some(Instruction::Goto(label)) => {
                     let successor = label_to_block
                         .get(&label)
@@ -519,13 +524,18 @@ impl ControlFlowGraph {
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
                 }
-                Some(Instruction::Return) => (),
+
+                Some(Instruction::Return)
+                | Some(Instruction::TupleError)
+                | Some(Instruction::TensorError(_)) => (),
+
                 Some(_) => {
                     if block.id.0 < last_index {
                         cfg.successors[block.id.0].push(BlockId(block.id.0 + 1));
                         cfg.predecessors[block.id.0 + 1].push(block.id.clone());
                     }
                 }
+
                 None => panic!("empty block {:?}", block.id),
             };
         }

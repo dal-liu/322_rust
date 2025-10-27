@@ -7,10 +7,10 @@ use parser::parse_file;
 
 #[derive(Parser)]
 struct Cli {
-    #[arg(short)]
+    #[arg(short, default_value_t = false)]
     verbose: bool,
 
-    #[arg(short)]
+    #[arg(short, default_value_t = 1)]
     generate: u8,
 
     source: String,

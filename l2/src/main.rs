@@ -8,13 +8,13 @@ use parser::{parse_file, parse_function_file};
 
 #[derive(Parser)]
 struct Cli {
-    #[arg(short)]
+    #[arg(short, default_value_t = false)]
     verbose: bool,
 
-    #[arg(short)]
+    #[arg(short, default_value_t = 1)]
     generate: u8,
 
-    #[arg(short)]
+    #[arg(short, default_value_t = false)]
     liveness: bool,
 
     source: String,

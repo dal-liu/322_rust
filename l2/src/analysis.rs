@@ -93,14 +93,15 @@ pub fn compute_liveness(func: &Function) -> AnalysisResult {
 
         block_out[i] = cfg.successors[i]
             .iter()
-            .flat_map(|succ| block_in[succ.0].iter().copied())
+            .flat_map(|s| block_in[s.0].iter().copied())
             .collect();
 
         let temp: HashSet<&Value> = block_gen[i]
             .iter()
             .chain(
-                block_out[id.0]
-                    .difference(&block_kill[i].iter().collect())
+                block_out[i]
+                    .iter()
+                    .filter(|&val| !block_kill[i].contains(val))
                     .copied(),
             )
             .collect();

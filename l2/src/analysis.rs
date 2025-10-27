@@ -1,12 +1,44 @@
 use l2::*;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AnalysisResult {
     pub gen_: Vec<Vec<HashSet<Value>>>,
     pub kill: Vec<Vec<HashSet<Value>>>,
     pub in_: Vec<Vec<HashSet<Value>>>,
     pub out: Vec<Vec<HashSet<Value>>>,
+}
+
+impl DisplayResolved for AnalysisResult {
+    fn fmt_with(&self, f: &mut std::fmt::Formatter, interner: &Interner) -> std::fmt::Result {
+        writeln!(f, "(\n(in")?;
+
+        for vec in &self.in_ {
+            for set in vec {
+                let line = set
+                    .iter()
+                    .map(|val| format!("{}", val.resolved(interner)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                writeln!(f, "({})", line)?;
+            }
+        }
+
+        writeln!(f, ")\n\n(out")?;
+
+        for vec in &self.out {
+            for set in vec {
+                let line = set
+                    .iter()
+                    .map(|val| format!("{}", val.resolved(interner)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                writeln!(f, "({})", line)?;
+            }
+        }
+
+        writeln!(f, ")\n\n)")
+    }
 }
 
 #[derive(Debug, Default)]

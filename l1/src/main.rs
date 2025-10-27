@@ -1,14 +1,29 @@
 mod codegen;
 mod parser;
 
+use clap::Parser;
 use codegen::generate_code;
 use parser::parse_file;
-use std::env;
+
+#[derive(Parser)]
+struct Cli {
+    #[arg(short)]
+    verbose: bool,
+
+    #[arg(short)]
+    generate: u8,
+
+    source: String,
+}
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    match parse_file(&args[1]) {
-        Some(prog) => generate_code(&prog).unwrap(),
-        None => (),
+    let cli = Cli::parse();
+    if let Some(prog) = parse_file(&cli.source) {
+        if cli.verbose {
+            println!("{}", &prog);
+        }
+        if cli.generate == 1 {
+            generate_code(&prog).unwrap()
+        }
     }
 }

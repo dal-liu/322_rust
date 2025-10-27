@@ -1,7 +1,30 @@
 use std::collections::HashMap;
 use std::fmt;
 
-pub const MAX_SUCCESSORS: usize = 2;
+pub trait DisplayResolved {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result;
+
+    fn resolved<'a>(&'a self, interner: &'a Interner) -> DisplayResolvedWrapper<'a, Self>
+    where
+        Self: Sized,
+    {
+        DisplayResolvedWrapper {
+            inner: self,
+            interner,
+        }
+    }
+}
+
+pub struct DisplayResolvedWrapper<'a, T: ?Sized> {
+    inner: &'a T,
+    interner: &'a Interner,
+}
+
+impl<'a, T: DisplayResolved + ?Sized> fmt::Display for DisplayResolvedWrapper<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.inner.fmt_with(f, self.interner)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Register {
@@ -24,7 +47,7 @@ pub enum Register {
 }
 
 impl fmt::Display for Register {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Register::*;
         let reg = match self {
             RAX => "rax",
@@ -57,24 +80,24 @@ pub enum Value {
     Variable(SymbolId),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SymbolId(pub usize);
-
-impl fmt::Display for SymbolId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+impl DisplayResolved for Value {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result {
+        match self {
+            Self::Register(reg) => write!(f, "{}", reg),
+            Self::Number(num) => write!(f, "{}", num),
+            Self::Label(id) => write!(f, ":{}", interner.resolve(id)),
+            Self::Function(id) => write!(f, "@{}", interner.resolve(id)),
+            Self::Variable(id) => write!(f, "%{}", interner.resolve(id)),
+        }
     }
 }
 
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Register(r) => write!(f, "{}", r),
-            Self::Number(n) => write!(f, "{}", n),
-            Self::Label(s) => write!(f, ":{}", s),
-            Self::Function(s) => write!(f, "@{}", s),
-            Self::Variable(s) => write!(f, "%{}", s),
-        }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SymbolId(pub usize);
+
+impl DisplayResolved for SymbolId {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result {
+        write!(f, "{}", interner.resolve(self))
     }
 }
 
@@ -87,7 +110,7 @@ pub enum ArithmeticOp {
 }
 
 impl fmt::Display for ArithmeticOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op = match self {
             Self::PlusEq => "+=",
             Self::MinusEq => "-=",
@@ -105,7 +128,7 @@ pub enum ShiftOp {
 }
 
 impl fmt::Display for ShiftOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op = match self {
             Self::LeftShiftEq => "<<=",
             Self::RightShiftEq => ">>=",
@@ -122,7 +145,7 @@ pub enum CompareOp {
 }
 
 impl fmt::Display for CompareOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op = match self {
             Self::Less => "<",
             Self::LessEq => "<=",
@@ -208,60 +231,126 @@ pub enum Instruction {
     },
 }
 
-impl fmt::Display for Instruction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl DisplayResolved for Instruction {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result {
         use Instruction::*;
         match self {
-            Assign { dst, src } => write!(f, "{} <- {}", dst, src),
+            Assign { dst, src } => {
+                write!(
+                    f,
+                    "{} <- {}",
+                    dst.resolved(interner),
+                    src.resolved(interner)
+                )
+            }
             Load { dst, src, offset } => {
-                write!(f, "{} <- mem {} {}", dst, src, offset)
+                write!(
+                    f,
+                    "{} <- mem {} {}",
+                    dst.resolved(interner),
+                    src.resolved(interner),
+                    offset
+                )
             }
             Store { dst, offset, src } => {
-                write!(f, "mem {} {} <- {}", dst, offset, src)
+                write!(
+                    f,
+                    "mem {} {} <- {}",
+                    dst.resolved(interner),
+                    offset,
+                    src.resolved(interner)
+                )
             }
             StackArg { dst, offset } => {
-                write!(f, "{} <- stack-arg {}", dst, offset)
+                write!(f, "{} <- stack-arg {}", dst.resolved(interner), offset)
             }
-            Arithmetic { dst, op, src } => write!(f, "{} {} {}", dst, op, src),
-            Shift { dst, op, src } => write!(f, "{} {} {}", dst, op, src),
+            Arithmetic { dst, op, src } => write!(
+                f,
+                "{} {} {}",
+                dst.resolved(interner),
+                op,
+                src.resolved(interner)
+            ),
+            Shift { dst, op, src } => write!(
+                f,
+                "{} {} {}",
+                dst.resolved(interner),
+                op,
+                src.resolved(interner)
+            ),
             StoreArithmetic {
                 dst,
                 offset,
                 op,
                 src,
-            } => write!(f, "mem {} {} {} {}", dst, offset, op, src),
+            } => write!(
+                f,
+                "mem {} {} {} {}",
+                dst.resolved(interner),
+                offset,
+                op,
+                src.resolved(interner)
+            ),
             LoadArithmetic {
                 dst,
                 op,
                 src,
                 offset,
-            } => write!(f, "{} {} mem {} {}", dst, op, src, offset),
+            } => write!(
+                f,
+                "{} {} mem {} {}",
+                dst.resolved(interner),
+                op,
+                src.resolved(interner),
+                offset
+            ),
             Compare { dst, lhs, op, rhs } => {
-                write!(f, "{} <- {} {} {}", dst, lhs, op, rhs)
+                write!(
+                    f,
+                    "{} <- {} {} {}",
+                    dst.resolved(interner),
+                    lhs.resolved(interner),
+                    op,
+                    rhs.resolved(interner)
+                )
             }
             CJump {
                 lhs,
                 op,
                 rhs,
                 label,
-            } => write!(f, "cjump {} {} {} :{}", lhs, op, rhs, label),
-            Label(label) => write!(f, ":{}", label),
-            Goto(label) => write!(f, "goto :{}", label),
+            } => write!(
+                f,
+                "cjump {} {} {} :{}",
+                lhs.resolved(interner),
+                op,
+                rhs.resolved(interner),
+                label.resolved(interner)
+            ),
+            Label(label) => write!(f, ":{}", label.resolved(interner)),
+            Goto(label) => write!(f, "goto :{}", label.resolved(interner)),
             Return => write!(f, "return"),
-            Call { callee, args } => write!(f, "call {} {}", callee, args),
+            Call { callee, args } => write!(f, "call {} {}", callee.resolved(interner), args),
             Print => write!(f, "call print 1"),
             Input => write!(f, "call input 0"),
             Allocate => write!(f, "call allocate 2"),
             TupleError => write!(f, "call tuple-error 3"),
             TensorError(args) => write!(f, "call tensor-error {}", args),
-            Increment(reg) => write!(f, "{}++", reg),
-            Decrement(reg) => write!(f, "{}--", reg),
+            Increment(reg) => write!(f, "{}++", reg.resolved(interner)),
+            Decrement(reg) => write!(f, "{}--", reg.resolved(interner)),
             LEA {
                 dst,
                 src,
                 offset,
                 scale,
-            } => write!(f, "{} @ {} {} {}", dst, src, offset, scale),
+            } => write!(
+                f,
+                "{} @ {} {} {}",
+                dst.resolved(interner),
+                src.resolved(interner),
+                offset.resolved(interner),
+                scale
+            ),
         }
     }
 }
@@ -272,10 +361,10 @@ pub struct BasicBlock {
     pub instructions: Vec<Instruction>,
 }
 
-impl fmt::Display for BasicBlock {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl DisplayResolved for BasicBlock {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner) -> fmt::Result {
         for inst in &self.instructions {
-            writeln!(f, "\t{}", inst)?;
+            writeln!(f, "\t{}", inst.resolved(interner))?;
         }
         Ok(())
     }
@@ -286,11 +375,17 @@ pub struct Function {
     pub name: SymbolId,
     pub args: i64,
     pub basic_blocks: Vec<BasicBlock>,
+    pub interner: Interner,
     pub cfg: ControlFlowGraph,
 }
 
 impl Function {
-    pub fn build(name: SymbolId, args: i64, instructions: Vec<Instruction>) -> Self {
+    pub fn build(
+        name: SymbolId,
+        args: i64,
+        instructions: Vec<Instruction>,
+        interner: Interner,
+    ) -> Self {
         let mut basic_blocks = vec![BasicBlock {
             id: BlockId(0),
             instructions: Vec::new(),
@@ -335,21 +430,45 @@ impl Function {
             name,
             args,
             basic_blocks,
+            interner,
             cfg,
         }
     }
 }
 
 impl fmt::Display for Function {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "(@{}", self.name)?;
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "(@{}", self.name.resolved(&self.interner))?;
         writeln!(f, "\t{}", self.args)?;
 
         for block in &self.basic_blocks {
-            write!(f, "{}", block)?;
+            write!(f, "{}", block.resolved(&self.interner))?;
         }
 
         writeln!(f, ")")
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Interner {
+    map: HashMap<String, SymbolId>,
+    vec: Vec<String>,
+}
+
+impl Interner {
+    pub fn intern(&mut self, name: &str) -> SymbolId {
+        if let Some(id) = self.map.get(name) {
+            id.clone()
+        } else {
+            let id = SymbolId(self.vec.len());
+            self.map.insert(name.to_string(), id.clone());
+            self.vec.push(name.to_string());
+            id
+        }
+    }
+
+    pub fn resolve(&self, id: &SymbolId) -> &str {
+        &self.vec[id.0]
     }
 }
 
@@ -384,7 +503,7 @@ impl ControlFlowGraph {
                 Some(Instruction::CJump { label, .. }) => {
                     let successor = label_to_block
                         .get(&label)
-                        .unwrap_or_else(|| panic!("invalid label {}", label));
+                        .unwrap_or_else(|| panic!("invalid label {:?}", label));
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
 
@@ -396,7 +515,7 @@ impl ControlFlowGraph {
                 Some(Instruction::Goto(label)) => {
                     let successor = label_to_block
                         .get(&label)
-                        .unwrap_or_else(|| panic!("invalid label {}", label));
+                        .unwrap_or_else(|| panic!("invalid label {:?}", label));
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
                 }
@@ -407,7 +526,7 @@ impl ControlFlowGraph {
                         cfg.predecessors[block.id.0 + 1].push(block.id.clone());
                     }
                 }
-                None => panic!("empty block {}", block.id.0),
+                None => panic!("empty block {:?}", block.id),
             };
         }
 
@@ -420,13 +539,12 @@ pub struct BlockId(pub usize);
 
 #[derive(Debug)]
 pub struct Program {
-    pub entry_point: SymbolId,
+    pub entry_point: String,
     pub functions: Vec<Function>,
-    pub interner: Interner,
 }
 
 impl fmt::Display for Program {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "(@{}", self.entry_point)?;
 
         for func in &self.functions {
@@ -434,28 +552,5 @@ impl fmt::Display for Program {
         }
 
         writeln!(f, ")")
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Interner {
-    map: HashMap<String, SymbolId>,
-    vec: Vec<String>,
-}
-
-impl Interner {
-    pub fn intern(&mut self, name: &str) -> SymbolId {
-        if let Some(id) = self.map.get(name) {
-            id.clone()
-        } else {
-            let id = SymbolId(self.vec.len());
-            self.map.insert(name.to_string(), id.clone());
-            self.vec.push(name.to_string());
-            id
-        }
-    }
-
-    pub fn resolve(&self, id: &SymbolId) -> &str {
-        &self.vec[id.0]
     }
 }

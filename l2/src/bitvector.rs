@@ -47,14 +47,18 @@ impl BitVector {
             current_word: if self.vec.is_empty() { 0 } else { self.vec[0] },
         }
     }
+
+    pub fn set(&mut self, index: usize) {
+        let word_index = index / Self::BITWORD_SIZE;
+        let bit_index = index % Self::BITWORD_SIZE;
+        self.vec[word_index] |= 1u64 << bit_index;
+    }
 }
 
 impl Extend<usize> for BitVector {
     fn extend<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
         for index in iter {
-            let word_index = index / Self::BITWORD_SIZE;
-            let bit_index = index % Self::BITWORD_SIZE;
-            self.vec[word_index] |= 1u64 << bit_index;
+            self.set(index);
         }
     }
 }

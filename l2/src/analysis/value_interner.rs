@@ -1,8 +1,9 @@
 use crate::analysis::def_use::{defs, uses};
+
 use l2::*;
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValueInterner {
     map: HashMap<Value, usize>,
     vec: Vec<Value>,
@@ -46,5 +47,9 @@ impl ValueInterner {
 
     pub fn len(&self) -> usize {
         self.vec.len()
+    }
+
+    pub fn get(&self, value: &Value) -> Option<usize> {
+        self.map.get(value).copied()
     }
 }

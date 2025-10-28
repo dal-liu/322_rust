@@ -1,13 +1,14 @@
-mod bitvector;
 mod def_use;
 mod value_interner;
 mod worklist;
 
 use crate::analysis::def_use::{defs, uses};
-use crate::analysis::value_interner::ValueInterner;
 use crate::analysis::worklist::Worklist;
-use bitvector::BitVector;
+use crate::bitvector::BitVector;
+
 use l2::*;
+
+pub use crate::analysis::value_interner::ValueInterner;
 
 #[derive(Debug)]
 pub struct AnalysisResult {
@@ -24,10 +25,10 @@ impl DisplayResolved for AnalysisResult {
 
         for vec in &self.in_ {
             for bit in vec {
-                let mut line = bit
+                let mut line: Vec<String> = bit
                     .iter()
-                    .map(|val| format!("{}", self.interner.resolve(val).resolved(interner)))
-                    .collect::<Vec<_>>();
+                    .map(|val| self.interner.resolve(val).resolved(interner).to_string())
+                    .collect();
                 line.sort();
                 writeln!(f, "({})", line.join(" "))?;
             }
@@ -36,11 +37,11 @@ impl DisplayResolved for AnalysisResult {
         writeln!(f, ")\n\n(out")?;
 
         for vec in &self.out {
-            for bit in vec {
-                let mut line = bit
+            for bitvec in vec {
+                let mut line: Vec<String> = bitvec
                     .iter()
                     .map(|val| format!("{}", self.interner.resolve(val).resolved(interner)))
-                    .collect::<Vec<_>>();
+                    .collect();
                 line.sort();
                 writeln!(f, "({})", line.join(" "))?;
             }

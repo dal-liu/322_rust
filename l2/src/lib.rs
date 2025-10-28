@@ -484,7 +484,7 @@ pub struct ControlFlowGraph {
 
 impl ControlFlowGraph {
     pub fn build(basic_blocks: &[BasicBlock]) -> Self {
-        let label_to_block: HashMap<_, _> = basic_blocks
+        let label_to_block: HashMap<SymbolId, BlockId> = basic_blocks
             .iter()
             .filter_map(|block| {
                 if let Some(Instruction::Label(id)) = block.instructions.first() {

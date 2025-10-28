@@ -1,10 +1,14 @@
 mod analysis;
+mod bitvector;
 mod parser;
+mod regalloc;
 
-use analysis::compute_liveness;
+use crate::analysis::compute_liveness;
+use crate::parser::{parse_file, parse_function_file};
+use crate::regalloc::compute_interference;
+
 use clap::Parser;
 use l2::*;
-use parser::{parse_file, parse_function_file};
 
 #[derive(Parser)]
 struct Cli {
@@ -17,6 +21,9 @@ struct Cli {
     #[arg(short, default_value_t = false)]
     liveness: bool,
 
+    #[arg(short, default_value_t = false)]
+    interference: bool,
+
     source: String,
 }
 
@@ -26,8 +33,17 @@ fn main() {
 
     if cli.liveness {
         if let Some(func) = parse_function_file(file_name) {
-            let result = compute_liveness(&func);
-            print!("{}", result.resolved(&func.interner));
+            let liveness = compute_liveness(&func);
+            print!("{}", liveness.resolved(&func.interner));
+        }
+        return;
+    }
+
+    if cli.interference {
+        if let Some(func) = parse_function_file(file_name) {
+            let liveness = compute_liveness(&func);
+            let interference = compute_interference(&func, &liveness);
+            print!("{}", interference.resolved(&func.interner));
         }
         return;
     }

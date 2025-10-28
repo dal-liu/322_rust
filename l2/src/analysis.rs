@@ -40,7 +40,7 @@ impl DisplayResolved for AnalysisResult {
             for bitvec in vec {
                 let mut line: Vec<String> = bitvec
                     .iter()
-                    .map(|val| format!("{}", self.interner.resolve(val).resolved(interner)))
+                    .map(|val| self.interner.resolve(val).resolved(interner).to_string())
                     .collect();
                 line.sort();
                 writeln!(f, "({})", line.join(" "))?;

@@ -58,7 +58,7 @@ impl InterferenceGraph {
                 let kill = &liveness.kill[i][j];
                 for u in kill.iter() {
                     for v in out.iter() {
-                        if u < v {
+                        if u != v {
                             graph.add_edge(u, v);
                         }
                     }

@@ -371,16 +371,16 @@ pub fn parse_file(file_name: &str) -> Option<Program> {
         .parse_with_state(&input, &mut extra::SimpleState(StringInterner::default()))
         .into_output_errors();
 
-    errors.into_iter().for_each(|err| {
+    errors.into_iter().for_each(|e| {
         Report::build(
             ReportKind::Error,
-            (file_name.clone(), err.span().into_range()),
+            (file_name.clone(), e.span().into_range()),
         )
         .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-        .with_message(err.to_string())
+        .with_message(e.to_string())
         .with_label(
-            Label::new((file_name.clone(), err.span().into_range()))
-                .with_message(err.reason().to_string())
+            Label::new((file_name.clone(), e.span().into_range()))
+                .with_message(e.reason().to_string())
                 .with_color(Color::Red),
         )
         .finish()
@@ -399,16 +399,16 @@ pub fn parse_function_file(file_name: &str) -> Option<Function> {
         .parse_with_state(&input, &mut extra::SimpleState(StringInterner::default()))
         .into_output_errors();
 
-    errors.into_iter().for_each(|err| {
+    errors.into_iter().for_each(|e| {
         Report::build(
             ReportKind::Error,
-            (file_name.clone(), err.span().into_range()),
+            (file_name.clone(), e.span().into_range()),
         )
         .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-        .with_message(err.to_string())
+        .with_message(e.to_string())
         .with_label(
-            Label::new((file_name.clone(), err.span().into_range()))
-                .with_message(err.reason().to_string())
+            Label::new((file_name.clone(), e.span().into_range()))
+                .with_message(e.reason().to_string())
                 .with_color(Color::Red),
         )
         .finish()
@@ -417,4 +417,42 @@ pub fn parse_function_file(file_name: &str) -> Option<Function> {
     });
 
     output
+}
+
+pub fn parse_spill_file(file_name: &str) -> Option<(Function, Value, String)> {
+    let file_name = file_name.to_string();
+    let input = fs::read_to_string(&file_name).unwrap_or_else(|e| panic!("{}", e));
+
+    let (output, errors) = function()
+        .then(
+            variable_name()
+                .map_with(|var, e| Value::Variable(e.state().intern(var)))
+                .padded(),
+        )
+        .then(variable_name().map(|var| var.to_string()).padded())
+        .parse_with_state(&input, &mut extra::SimpleState(StringInterner::default()))
+        .into_output_errors();
+
+    errors.into_iter().for_each(|e| {
+        Report::build(
+            ReportKind::Error,
+            (file_name.clone(), e.span().into_range()),
+        )
+        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+        .with_message(e.to_string())
+        .with_label(
+            Label::new((file_name.clone(), e.span().into_range()))
+                .with_message(e.reason().to_string())
+                .with_color(Color::Red),
+        )
+        .finish()
+        .eprint(sources([(file_name.clone(), input.clone())]))
+        .unwrap();
+    });
+
+    if let Some(((func, var), prefix)) = output {
+        Some((func, var, prefix))
+    } else {
+        None
+    }
 }

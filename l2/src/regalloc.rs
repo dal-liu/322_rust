@@ -1,4 +1,5 @@
 mod interference;
+mod spilling;
 
 use crate::analysis::AnalysisResult;
 use crate::regalloc::interference::InterferenceGraph;

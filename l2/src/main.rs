@@ -4,7 +4,7 @@ mod parser;
 mod regalloc;
 
 use crate::analysis::compute_liveness;
-use crate::parser::{parse_file, parse_function_file};
+use crate::parser::{parse_file, parse_function_file, parse_spill_file};
 use crate::regalloc::compute_interference;
 
 use clap::Parser;
@@ -19,6 +19,9 @@ struct Cli {
     generate: u8,
 
     #[arg(short, default_value_t = false)]
+    spill: bool,
+
+    #[arg(short, default_value_t = false)]
     liveness: bool,
 
     #[arg(short, default_value_t = false)]
@@ -30,6 +33,11 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
     let file_name = &cli.source;
+
+    if cli.spill {
+        if let Some((func, var, prefix)) = parse_spill_file(file_name) {}
+        return;
+    }
 
     if cli.liveness {
         if let Some(func) = parse_function_file(file_name) {

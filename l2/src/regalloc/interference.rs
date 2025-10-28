@@ -1,4 +1,4 @@
-use crate::analysis::{AnalysisResult, ValueInterner};
+use crate::analysis::{LivenessResult, ValueInterner};
 use crate::bitvector::BitVector;
 
 use l2::*;
@@ -10,7 +10,7 @@ pub struct InterferenceGraph {
 }
 
 impl InterferenceGraph {
-    pub fn build(func: &Function, liveness: &AnalysisResult) -> Self {
+    pub fn build(func: &Function, liveness: &LivenessResult) -> Self {
         use Register::*;
 
         let mut interner = liveness.interner.clone();

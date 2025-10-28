@@ -6,15 +6,16 @@ mod worklist;
 use crate::analysis::def_use::{defs, uses};
 use crate::analysis::value_interner::ValueInterner;
 use crate::analysis::worklist::Worklist;
+use bitvector::BitVector;
 use l2::*;
-use std::collections::HashSet;
 
 #[derive(Debug)]
 pub struct AnalysisResult {
-    pub gen_: Vec<Vec<HashSet<Value>>>,
-    pub kill: Vec<Vec<HashSet<Value>>>,
-    pub in_: Vec<Vec<HashSet<Value>>>,
-    pub out: Vec<Vec<HashSet<Value>>>,
+    pub interner: ValueInterner,
+    pub gen_: Vec<Vec<BitVector>>,
+    pub kill: Vec<Vec<BitVector>>,
+    pub in_: Vec<Vec<BitVector>>,
+    pub out: Vec<Vec<BitVector>>,
 }
 
 impl DisplayResolved for AnalysisResult {
@@ -22,10 +23,10 @@ impl DisplayResolved for AnalysisResult {
         writeln!(f, "(\n(in")?;
 
         for vec in &self.in_ {
-            for set in vec {
-                let mut line = set
+            for bit in vec {
+                let mut line = bit
                     .iter()
-                    .map(|val| format!("{}", val.resolved(interner)))
+                    .map(|val| format!("{}", self.interner.resolve(val).resolved(interner)))
                     .collect::<Vec<_>>();
                 line.sort();
                 writeln!(f, "({})", line.join(" "))?;
@@ -35,10 +36,10 @@ impl DisplayResolved for AnalysisResult {
         writeln!(f, ")\n\n(out")?;
 
         for vec in &self.out {
-            for set in vec {
-                let mut line = set
+            for bit in vec {
+                let mut line = bit
                     .iter()
-                    .map(|val| format!("{}", val.resolved(interner)))
+                    .map(|val| format!("{}", self.interner.resolve(val).resolved(interner)))
                     .collect::<Vec<_>>();
                 line.sort();
                 writeln!(f, "({})", line.join(" "))?;
@@ -50,77 +51,76 @@ impl DisplayResolved for AnalysisResult {
 }
 
 pub fn compute_liveness(func: &Function) -> AnalysisResult {
-    let value_map = ValueInterner::build(func);
-    let num_values = value_map.len();
+    let mut interner = ValueInterner::build(func);
+    let num_values = interner.len();
     let num_blocks = func.basic_blocks.len();
-    let mut block_gen: Vec<HashSet<Value>> = vec![HashSet::new(); num_blocks];
-    let mut block_kill: Vec<HashSet<Value>> = vec![HashSet::new(); num_blocks];
+    let mut block_gen: Vec<BitVector> = vec![BitVector::with_capacity(num_values); num_blocks];
+    let mut block_kill: Vec<BitVector> = vec![BitVector::with_capacity(num_values); num_blocks];
 
     for (i, block) in func.basic_blocks.iter().enumerate() {
         for inst in &block.instructions {
-            block_gen[i].extend(
-                uses(inst)
-                    .into_iter()
-                    .filter(|use_| !block_kill[i].contains(use_)),
-            );
-            block_kill[i].extend(defs(inst).into_iter());
+            block_gen[i].extend(uses(inst).iter().filter_map(|use_| {
+                let index = interner.intern(&use_);
+                if !block_kill[i].test(index) {
+                    Some(index)
+                } else {
+                    None
+                }
+            }));
+            block_kill[i].extend(defs(inst).iter().map(|def| interner.intern(&def)));
         }
     }
 
     let cfg = &func.cfg;
-    let mut block_in: Vec<HashSet<&Value>> = vec![HashSet::new(); num_blocks];
-    let mut block_out: Vec<HashSet<&Value>> = vec![HashSet::new(); num_blocks];
+    let mut block_in: Vec<BitVector> = vec![BitVector::with_capacity(num_values); num_blocks];
+    let mut block_out: Vec<BitVector> = vec![BitVector::with_capacity(num_values); num_blocks];
     let mut worklist = Worklist::default();
     worklist.extend(func.basic_blocks.iter().map(|block| &block.id));
 
     while let Some(id) = worklist.pop() {
-        block_out[id.0] = cfg.successors[id.0]
-            .iter()
-            .flat_map(|s| block_in[s.0].iter().copied())
-            .collect();
+        let i = id.0;
 
-        let temp: HashSet<&Value> = block_gen[id.0]
-            .iter()
-            .chain(
-                block_out[id.0]
-                    .iter()
-                    .filter(|&val| !block_kill[id.0].contains(val))
-                    .copied(),
-            )
-            .collect();
+        block_out[i].clear();
+        for s in &cfg.successors[i] {
+            block_out[i].union(&block_in[s.0]);
+        }
 
-        if temp != block_in[id.0] {
-            block_in[id.0] = temp;
-            worklist.extend(cfg.predecessors[id.0].iter());
+        let mut temp = block_out[i].clone();
+        temp.difference(&block_kill[i]);
+        temp.union(&block_gen[i]);
+
+        if temp != block_in[i] {
+            block_in[i] = temp;
+            worklist.extend(cfg.predecessors[i].iter());
         }
     }
 
-    let mut gen_ = empty_dataflow_set(func);
-    let mut kill = empty_dataflow_set(func);
-    let mut in_ = empty_dataflow_set(func);
-    let mut out = empty_dataflow_set(func);
+    let mut gen_ = empty_dataflow_set(func, num_values);
+    let mut kill = empty_dataflow_set(func, num_values);
+    let mut in_ = empty_dataflow_set(func, num_values);
+    let mut out = empty_dataflow_set(func, num_values);
 
     for block in &func.basic_blocks {
         let i = block.id.0;
 
         for (j, inst) in block.instructions.iter().enumerate().rev() {
-            gen_[i][j].extend(uses(inst).into_iter());
-            kill[i][j].extend(defs(inst).into_iter());
+            gen_[i][j].extend(uses(inst).iter().map(|def| interner.intern(&def)));
+            kill[i][j].extend(defs(inst).iter().map(|def| interner.intern(&def)));
 
             out[i][j] = if j == block.instructions.len() - 1 {
-                block_out[i].iter().map(|&val| val.clone()).collect()
+                block_out[i].clone()
             } else {
                 in_[i][j + 1].clone()
             };
 
-            in_[i][j] = gen_[i][j]
-                .union(&out[i][j].difference(&kill[i][j]).cloned().collect())
-                .cloned()
-                .collect();
+            in_[i][j] = out[i][j].clone();
+            in_[i][j].difference(&kill[i][j]);
+            in_[i][j].union(&gen_[i][j]);
         }
     }
 
     AnalysisResult {
+        interner,
         gen_,
         kill,
         in_,
@@ -128,9 +128,9 @@ pub fn compute_liveness(func: &Function) -> AnalysisResult {
     }
 }
 
-fn empty_dataflow_set(func: &Function) -> Vec<Vec<HashSet<Value>>> {
+fn empty_dataflow_set(func: &Function, capacity: usize) -> Vec<Vec<BitVector>> {
     func.basic_blocks
         .iter()
-        .map(|block| vec![HashSet::new(); block.instructions.len()])
+        .map(|block| vec![BitVector::with_capacity(capacity); block.instructions.len()])
         .collect()
 }

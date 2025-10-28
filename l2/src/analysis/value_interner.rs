@@ -18,10 +18,10 @@ impl ValueInterner {
         for block in &func.basic_blocks {
             for inst in &block.instructions {
                 for use_ in uses(inst) {
-                    value_map.intern(use_);
+                    value_map.intern(&use_);
                 }
                 for def in defs(inst) {
-                    value_map.intern(def);
+                    value_map.intern(&def);
                 }
             }
         }
@@ -29,13 +29,13 @@ impl ValueInterner {
         value_map
     }
 
-    pub fn intern(&mut self, value: Value) -> usize {
-        if let Some(&idx) = self.map.get(&value) {
+    pub fn intern(&mut self, value: &Value) -> usize {
+        if let Some(&idx) = self.map.get(value) {
             idx
         } else {
             let idx = self.vec.len();
             self.map.insert(value.clone(), idx);
-            self.vec.push(value);
+            self.vec.push(value.clone());
             idx
         }
     }

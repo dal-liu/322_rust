@@ -16,12 +16,16 @@ impl BitVector {
     }
 
     pub fn test(&self, index: usize) -> bool {
+        assert!(index < self.len);
+
         let word_index = index / Self::BITWORD_SIZE;
         let bit_index = index % Self::BITWORD_SIZE;
         (self.vec[word_index] & 1u64 << bit_index) != 0
     }
 
     pub fn union(&mut self, other: &Self) {
+        assert_eq!(self.vec.len(), other.vec.len());
+
         for (a, b) in self.vec.iter_mut().zip(&other.vec) {
             *a |= *b;
         }
@@ -34,6 +38,8 @@ impl BitVector {
     }
 
     pub fn difference(&mut self, other: &Self) {
+        assert_eq!(self.vec.len(), other.vec.len());
+
         for (a, b) in self.vec.iter_mut().zip(&other.vec) {
             *a &= !*b;
         }
@@ -49,6 +55,8 @@ impl BitVector {
     }
 
     pub fn set(&mut self, index: usize) {
+        assert!(index < self.len);
+
         let word_index = index / Self::BITWORD_SIZE;
         let bit_index = index % Self::BITWORD_SIZE;
         self.vec[word_index] |= 1u64 << bit_index;

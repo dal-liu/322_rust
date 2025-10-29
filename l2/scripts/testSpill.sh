@@ -14,6 +14,8 @@ for i in *.L2f ; do
   # Test
   pushd ./ ;
   cd ../../ ;
+  # Generate the binary
+  # make  
   # Spill
   ./spill tests/spill/${i} &> tests/spill/${i}.out.tmp ;
   # Remove empty lines from the generated file

@@ -15,6 +15,7 @@ fn comment<'src>() -> impl Parser<'src, &'src str, (), MyExtra<'src>> {
 
 fn write_register<'src>() -> impl Parser<'src, &'src str, Register, MyExtra<'src>> {
     use Register::*;
+
     choice((
         arg_register(),
         just("rax").to(RAX),
@@ -32,6 +33,7 @@ fn write_register<'src>() -> impl Parser<'src, &'src str, Register, MyExtra<'src
 
 fn arg_register<'src>() -> impl Parser<'src, &'src str, Register, MyExtra<'src>> {
     use Register::*;
+
     choice((
         just("rdi").to(RDI),
         just("rsi").to(RSI),

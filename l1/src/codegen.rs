@@ -286,6 +286,7 @@ impl CodeGenerator {
 
     fn format_register_8_bit(&self, reg: &Register) -> &'static str {
         use Register::*;
+
         match reg {
             RAX => "%al",
             RBX => "%bl",

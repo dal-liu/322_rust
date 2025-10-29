@@ -144,46 +144,46 @@ fn memory_arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, My
 }
 
 fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src>> {
-    use Instruction::*;
-
     let arrow = just("<-").padded_by(separators());
+
     let mem = just("mem").padded_by(separators());
+
     let call_keyword = just("call").padded_by(separators());
 
     let assign = write_register()
         .then_ignore(arrow)
         .then(value())
-        .map(|(dst, src)| Assign { dst, src });
+        .map(|(dst, src)| Instruction::Assign { dst, src });
 
     let load = write_register()
         .then_ignore(arrow.then_ignore(mem))
         .then(register())
         .then(multiplicative_of_8())
-        .map(|((dst, src), offset)| Load { dst, src, offset });
+        .map(|((dst, src), offset)| Instruction::Load { dst, src, offset });
 
     let store = mem
         .ignore_then(register())
         .then(multiplicative_of_8())
         .then_ignore(arrow)
         .then(value())
-        .map(|((dst, offset), src)| Store { dst, offset, src });
+        .map(|((dst, offset), src)| Instruction::Store { dst, offset, src });
 
     let arithmetic = write_register()
         .then(arithmetic_op())
         .then(register_or_number())
-        .map(|((dst, op), src)| Arithmetic { dst, op, src });
+        .map(|((dst, op), src)| Instruction::Arithmetic { dst, op, src });
 
     let shift = write_register()
         .then(shift_op())
         .then(rcx_or_number())
-        .map(|((dst, op), src)| Shift { dst, op, src });
+        .map(|((dst, op), src)| Instruction::Shift { dst, op, src });
 
     let store_arithmetic = mem
         .ignore_then(register())
         .then(multiplicative_of_8())
         .then(memory_arithmetic_op())
         .then(register_or_number())
-        .map(|(((dst, offset), op), src)| StoreArithmetic {
+        .map(|(((dst, offset), op), src)| Instruction::StoreArithmetic {
             dst,
             offset,
             op,
@@ -195,7 +195,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .then_ignore(mem)
         .then(register())
         .then(multiplicative_of_8())
-        .map(|(((dst, op), src), offset)| LoadArithmetic {
+        .map(|(((dst, op), src), offset)| Instruction::LoadArithmetic {
             dst,
             op,
             src,
@@ -207,7 +207,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .then(register_or_number())
         .then(compare_op())
         .then(register_or_number())
-        .map(|(((dst, lhs), op), rhs)| Compare { dst, lhs, op, rhs });
+        .map(|(((dst, lhs), op), rhs)| Instruction::Compare { dst, lhs, op, rhs });
 
     let cjump = just("cjump")
         .padded_by(separators())
@@ -215,46 +215,48 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .then(compare_op())
         .then(register_or_number())
         .then(label_name())
-        .map(|(((lhs, op), rhs), label)| CJump {
+        .map(|(((lhs, op), rhs), label)| Instruction::CJump {
             lhs,
             op,
             rhs,
             label: label.to_string(),
         });
 
-    let label_inst = label_name().map(|label| Label(label.to_string()));
+    let label_inst = label_name().map(|label| Instruction::Label(label.to_string()));
 
     let goto = just("goto")
         .padded_by(separators())
         .ignore_then(label_name())
-        .map(|label| Goto(label.to_string()));
+        .map(|label| Instruction::Goto(label.to_string()));
 
-    let return_inst = just("return").padded_by(separators()).to(Return);
+    let return_inst = just("return")
+        .padded_by(separators())
+        .to(Instruction::Return);
 
     let call_inst = call_keyword
         .ignore_then(write_or_function())
         .then(number())
-        .map(|(callee, args)| Call { callee, args });
+        .map(|(callee, args)| Instruction::Call { callee, args });
 
     let print = call_keyword
         .then(just("print").padded_by(separators()))
         .then(just('1').padded_by(separators()))
-        .to(Print);
+        .to(Instruction::Print);
 
     let input = call_keyword
         .then(just("input").padded_by(separators()))
         .then(just('0').padded_by(separators()))
-        .to(Input);
+        .to(Instruction::Input);
 
     let allocate = call_keyword
         .then(just("allocate").padded_by(separators()))
         .then(just('2').padded_by(separators()))
-        .to(Allocate);
+        .to(Instruction::Allocate);
 
     let tuple_error = call_keyword
         .then(just("tuple-error").padded_by(separators()))
         .then(just('3').padded_by(separators()))
-        .to(TupleError);
+        .to(Instruction::TupleError);
 
     let tensor_error = call_keyword
         .ignore_then(just("tensor-error").padded_by(separators()))
@@ -264,15 +266,15 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
                 .unwrapped()
                 .filter(|&n| n == 1 || n == 3 || n == 4),
         )
-        .map(|args| TensorError(args));
+        .map(|args| Instruction::TensorError(args));
 
     let increment = write_register()
         .then_ignore(just("++").padded_by(separators()))
-        .map(|reg| Increment(reg));
+        .map(|reg| Instruction::Increment(reg));
 
     let decrement = write_register()
         .then_ignore(just("--").padded_by(separators()))
-        .map(|reg| Decrement(reg));
+        .map(|reg| Instruction::Decrement(reg));
 
     let lea = write_register()
         .then_ignore(just('@').padded_by(separators()))
@@ -284,7 +286,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
                 .unwrapped()
                 .filter(|&n| n == 1 || n == 2 || n == 4 || n == 8),
         )
-        .map(|(((dst, src), offset), scale)| LEA {
+        .map(|(((dst, src), offset), scale)| Instruction::LEA {
             dst,
             src,
             offset,

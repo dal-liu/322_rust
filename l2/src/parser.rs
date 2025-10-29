@@ -405,11 +405,11 @@ pub fn parse_spill_file(file_name: &str) -> Option<(Function, Value, String)> {
     parse!(
         file_name,
         function()
-            .then(
-                variable_name()
-                    .map_with(|var, e| Value::Variable(e.state().intern(var)))
-                    .padded(),
-            )
+            .then(variable_name().padded(),)
+            .map(|(mut func, name)| {
+                let var = Value::Variable(func.interner.intern(name));
+                (func, var)
+            })
             .then(variable_name().map(|var| var.to_string()).padded())
             .map(|((func, var), prefix)| (func, var, prefix))
     )

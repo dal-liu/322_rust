@@ -1,4 +1,3 @@
-mod def_use;
 mod liveness;
 mod value_interner;
 mod worklist;

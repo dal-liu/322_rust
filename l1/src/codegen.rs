@@ -60,6 +60,7 @@ impl CodeGenerator {
 
     fn emit_instruction(&mut self, func: &Function, inst: &Instruction) -> io::Result<()> {
         use Instruction::*;
+
         match inst {
             Assign { dst, src } => {
                 if let Value::Register(reg) = src {

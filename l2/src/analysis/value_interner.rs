@@ -1,5 +1,3 @@
-use crate::analysis::def_use::{defs, uses};
-
 use l2::*;
 use std::collections::HashMap;
 
@@ -18,10 +16,10 @@ impl ValueInterner {
 
         for block in &func.basic_blocks {
             for inst in &block.instructions {
-                for use_ in uses(inst) {
+                for use_ in inst.uses() {
                     value_map.intern(&use_);
                 }
-                for def in defs(inst) {
+                for def in inst.defs() {
                     value_map.intern(&def);
                 }
             }

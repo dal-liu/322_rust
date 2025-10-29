@@ -10,6 +10,9 @@ test: $(COMPILER)
 test_liveness: $(COMPILER)
 	./scripts/testLiveness.sh
 
+test_spill: $(COMPILER)
+	./scripts/testSpill.sh
+
 test_interference: $(COMPILER)
 	./scripts/testInterference.sh
 

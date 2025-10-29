@@ -5,7 +5,7 @@ mod regalloc;
 
 use crate::analysis::compute_liveness;
 use crate::parser::{parse_file, parse_function_file, parse_spill_file};
-use crate::regalloc::compute_interference;
+use crate::regalloc::{compute_interference, spill_variable_with_display};
 
 use clap::Parser;
 use l2::*;
@@ -35,7 +35,10 @@ fn main() {
     let file_name = &cli.source;
 
     if cli.spill {
-        if let Some((func, var, prefix)) = parse_spill_file(file_name) {}
+        if let Some((mut func, var, prefix)) = parse_spill_file(file_name) {
+            let spill = spill_variable_with_display(&mut func, &var, &prefix);
+            print!("{}", spill);
+        }
         return;
     }
 

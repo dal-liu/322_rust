@@ -63,5 +63,9 @@ fn main() {
         if cli.verbose {
             print!("{}", &prog);
         }
+        for func in &prog.functions {
+            let liveness = compute_liveness(func);
+            compute_interference(func, &liveness);
+        }
     }
 }

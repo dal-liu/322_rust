@@ -9,7 +9,7 @@ macro_rules! parse {
         let input = fs::read_to_string(&file_name).unwrap_or_else(|e| panic!("{}", e));
 
         let (output, errors) = $parser
-            .parse_with_state(&input, &mut extra::SimpleState(StringInterner::default()))
+            .parse_with_state(&input, &mut extra::SimpleState(Interner::new()))
             .into_output_errors();
 
         errors.into_iter().for_each(|e| {
@@ -33,7 +33,7 @@ macro_rules! parse {
     }};
 }
 
-type MyExtra<'src> = extra::Full<Rich<'src, char>, extra::SimpleState<StringInterner>, ()>;
+type MyExtra<'src> = extra::Full<Rich<'src, char>, extra::SimpleState<Interner<String>>, ()>;
 
 fn separators<'src>() -> impl Parser<'src, &'src str, (), MyExtra<'src>> + Copy {
     one_of(" \t").repeated()
@@ -64,15 +64,18 @@ fn arg_value<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'src>> {
 fn rcx_or_variable<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'src>> {
     just("rcx")
         .to(Value::Register(Register::RCX))
-        .or(variable_name().map_with(|var, e| Value::Variable(e.state().intern(var))))
+        .or(variable_name()
+            .map_with(|var, e| Value::Variable(SymbolId(e.state().intern(var.to_string())))))
         .padded_by(separators())
 }
 
 fn value<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'src>> {
     choice((
         register_variable_number(),
-        function_name().map_with(|callee, e| Value::Function(e.state().intern(callee))),
-        label_name().map_with(|label, e| Value::Label(e.state().intern(label))),
+        function_name()
+            .map_with(|callee, e| Value::Function(SymbolId(e.state().intern(callee.to_string())))),
+        label_name()
+            .map_with(|label, e| Value::Label(SymbolId(e.state().intern(label.to_string())))),
     ))
     .padded_by(separators())
 }
@@ -85,7 +88,8 @@ fn register_variable_number<'src>() -> impl Parser<'src, &'src str, Value, MyExt
 
 fn write_or_function<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'src>> {
     write_value()
-        .or(function_name().map_with(|callee, e| Value::Function(e.state().intern(callee))))
+        .or(function_name()
+            .map_with(|callee, e| Value::Function(SymbolId(e.state().intern(callee.to_string())))))
         .padded_by(separators())
 }
 
@@ -250,15 +254,16 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
             lhs,
             op,
             rhs,
-            label: e.state().intern(label),
+            label: SymbolId(e.state().intern(label.to_string())),
         });
 
-    let label_inst = label_name().map_with(|label, e| Instruction::Label(e.state().intern(label)));
+    let label_inst = label_name()
+        .map_with(|label, e| Instruction::Label(SymbolId(e.state().intern(label.to_string()))));
 
     let goto = just("goto")
         .padded_by(separators())
         .ignore_then(label_name())
-        .map_with(|label, e| Instruction::Goto(e.state().intern(label)));
+        .map_with(|label, e| Instruction::Goto(SymbolId(e.state().intern(label.to_string()))));
 
     let return_inst = just("return")
         .padded_by(separators())
@@ -367,7 +372,7 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function, MyExtra<'src>> {
         .then_ignore(just(')').padded_by(comment().repeated()).padded())
         .map_with(|((name, args), instructions), e| {
             Function::build(
-                e.state().intern(name),
+                SymbolId(e.state().intern(name.to_string())),
                 args,
                 instructions,
                 mem::take(e.state()),
@@ -407,7 +412,7 @@ pub fn parse_spill_file(file_name: &str) -> Option<(Function, Value, String)> {
         function()
             .then(variable_name().padded(),)
             .map(|(mut func, name)| {
-                let var = Value::Variable(func.interner.intern(name));
+                let var = Value::Variable(SymbolId(func.interner.intern(name.to_string())));
                 (func, var)
             })
             .then(variable_name().map(|var| var.to_string()).padded())

@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::Hash;
 
 pub trait DisplayResolved {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result;
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result;
 
-    fn resolved<'a>(&'a self, interner: &'a StringInterner) -> DisplayResolvedWrapper<'a, Self>
+    fn resolved<'a>(&'a self, interner: &'a Interner<String>) -> DisplayResolvedWrapper<'a, Self>
     where
         Self: Sized,
     {
@@ -17,7 +18,7 @@ pub trait DisplayResolved {
 
 pub struct DisplayResolvedWrapper<'a, T: ?Sized> {
     inner: &'a T,
-    interner: &'a StringInterner,
+    interner: &'a Interner<String>,
 }
 
 impl<'a, T: DisplayResolved + ?Sized> fmt::Display for DisplayResolvedWrapper<'a, T> {
@@ -91,25 +92,19 @@ impl Value {
 }
 
 impl DisplayResolved for Value {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         match self {
             Self::Register(reg) => write!(f, "{}", reg),
             Self::Number(num) => write!(f, "{}", num),
-            Self::Label(id) => write!(f, ":{}", interner.resolve(id)),
-            Self::Function(id) => write!(f, "@{}", interner.resolve(id)),
-            Self::Variable(id) => write!(f, "%{}", interner.resolve(id)),
+            Self::Label(id) => write!(f, ":{}", interner.resolve(id.0)),
+            Self::Function(id) => write!(f, "@{}", interner.resolve(id.0)),
+            Self::Variable(id) => write!(f, "%{}", interner.resolve(id.0)),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SymbolId(pub usize);
-
-impl DisplayResolved for SymbolId {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result {
-        write!(f, "{}", interner.resolve(self))
-    }
-}
 
 #[derive(Debug, Clone)]
 pub enum ArithmeticOp {
@@ -430,7 +425,7 @@ impl Instruction {
 }
 
 impl DisplayResolved for Instruction {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         use Instruction::*;
 
         match self {
@@ -524,10 +519,10 @@ impl DisplayResolved for Instruction {
                 lhs.resolved(interner),
                 op,
                 rhs.resolved(interner),
-                label.resolved(interner)
+                interner.resolve(label.0),
             ),
-            Label(label) => write!(f, ":{}", label.resolved(interner)),
-            Goto(label) => write!(f, "goto :{}", label.resolved(interner)),
+            Label(label) => write!(f, ":{}", interner.resolve(label.0)),
+            Goto(label) => write!(f, "goto :{}", interner.resolve(label.0)),
             Return => write!(f, "return"),
             Call { callee, args } => write!(f, "call {} {}", callee.resolved(interner), args),
             Print => write!(f, "call print 1"),
@@ -561,7 +556,7 @@ pub struct BasicBlock {
 }
 
 impl DisplayResolved for BasicBlock {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &StringInterner) -> fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         for inst in &self.instructions {
             writeln!(f, "\t{}", inst.resolved(interner))?;
         }
@@ -569,13 +564,16 @@ impl DisplayResolved for BasicBlock {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct BlockId(pub usize);
+
 #[derive(Debug)]
 pub struct Function {
     pub name: SymbolId,
     pub args: i64,
     pub locals: i64,
     pub basic_blocks: Vec<BasicBlock>,
-    pub interner: StringInterner,
+    pub interner: Interner<String>,
     pub cfg: ControlFlowGraph,
 }
 
@@ -584,7 +582,7 @@ impl Function {
         name: SymbolId,
         args: i64,
         instructions: Vec<Instruction>,
-        interner: StringInterner,
+        interner: Interner<String>,
     ) -> Self {
         let mut basic_blocks = vec![BasicBlock {
             id: BlockId(0),
@@ -646,7 +644,7 @@ impl fmt::Display for Function {
         writeln!(
             f,
             "(@{}\n\t{}",
-            self.name.resolved(&self.interner),
+            self.interner.resolve(self.name.0),
             self.args
         )?;
 
@@ -658,26 +656,41 @@ impl fmt::Display for Function {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct StringInterner {
-    map: HashMap<String, SymbolId>,
-    vec: Vec<String>,
+#[derive(Debug, Default, Clone)]
+pub struct Interner<T> {
+    map: HashMap<T, usize>,
+    vec: Vec<T>,
 }
 
-impl StringInterner {
-    pub fn intern(&mut self, name: &str) -> SymbolId {
-        if let Some(id) = self.map.get(name) {
-            id.clone()
-        } else {
-            let id = SymbolId(self.vec.len());
-            self.map.insert(name.to_string(), id.clone());
-            self.vec.push(name.to_string());
-            id
+impl<T: Clone + Eq + Hash> Interner<T> {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+            vec: Vec::new(),
         }
     }
 
-    pub fn resolve(&self, id: &SymbolId) -> &str {
-        &self.vec[id.0]
+    pub fn intern(&mut self, item: T) -> usize {
+        if let Some(&index) = self.map.get(&item) {
+            index
+        } else {
+            let index = self.vec.len();
+            self.map.insert(item.clone(), index);
+            self.vec.push(item);
+            index
+        }
+    }
+
+    pub fn resolve(&self, index: usize) -> &T {
+        &self.vec[index]
+    }
+
+    pub fn len(&self) -> usize {
+        self.vec.len()
+    }
+
+    pub fn get(&self, value: &T) -> Option<usize> {
+        self.map.get(value).copied()
     }
 }
 
@@ -711,7 +724,7 @@ impl ControlFlowGraph {
             match block.instructions.last() {
                 Some(Instruction::CJump { label, .. }) => {
                     let successor = label_to_block
-                        .get(&label)
+                        .get(label)
                         .unwrap_or_else(|| panic!("invalid label {:?}", label));
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
@@ -724,7 +737,7 @@ impl ControlFlowGraph {
 
                 Some(Instruction::Goto(label)) => {
                     let successor = label_to_block
-                        .get(&label)
+                        .get(label)
                         .unwrap_or_else(|| panic!("invalid label {:?}", label));
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
@@ -748,9 +761,6 @@ impl ControlFlowGraph {
         cfg
     }
 }
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct BlockId(pub usize);
 
 #[derive(Debug)]
 pub struct Program {

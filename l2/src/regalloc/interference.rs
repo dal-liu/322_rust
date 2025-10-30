@@ -1,11 +1,12 @@
-use crate::analysis::{LivenessResult, ValueInterner};
+use crate::analysis::LivenessResult;
 use crate::bitvector::BitVector;
 
 use l2::*;
+use std::fmt;
 
 #[derive(Debug)]
 pub struct InterferenceGraph {
-    interner: ValueInterner,
+    interner: Interner<Value>,
     graph: Vec<BitVector>,
 }
 
@@ -17,7 +18,7 @@ impl InterferenceGraph {
         let gp_registers = [
             RAX, RDI, RSI, RDX, R8, R9, RCX, R10, R11, R12, R13, R14, R15, RBP, RBX,
         ]
-        .map(|reg| interner.intern(&Value::Register(reg)));
+        .map(|reg| interner.intern(Value::Register(reg)));
 
         let num_values = interner.len();
         let mut graph = Self {
@@ -91,10 +92,18 @@ impl InterferenceGraph {
         self.graph[u].set(v);
         self.graph[v].set(u);
     }
+
+    pub fn remove_node(&mut self, node: usize) {
+        let neighbors: Vec<usize> = self.graph[node].iter().collect();
+        for neighbor in neighbors {
+            self.graph[neighbor].reset(node);
+        }
+        self.graph[node].clear();
+    }
 }
 
 impl DisplayResolved for InterferenceGraph {
-    fn fmt_with(&self, f: &mut std::fmt::Formatter, interner: &StringInterner) -> std::fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         let mut lines: Vec<String> = (0..self.graph.len())
             .into_iter()
             .map(|i| {

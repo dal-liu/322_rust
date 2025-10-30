@@ -1,3 +1,4 @@
+mod coloring;
 mod interference;
 mod spilling;
 

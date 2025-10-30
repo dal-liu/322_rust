@@ -1,4 +1,3 @@
-use crate::analysis::ValueInterner;
 use crate::analysis::worklist::Worklist;
 use crate::bitvector::BitVector;
 
@@ -7,7 +6,7 @@ use l2::*;
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct LivenessResult {
-    pub interner: ValueInterner,
+    pub interner: Interner<Value>,
     pub gen_: Vec<Vec<BitVector>>,
     pub kill: Vec<Vec<BitVector>>,
     pub in_: Vec<Vec<BitVector>>,
@@ -15,7 +14,11 @@ pub struct LivenessResult {
 }
 
 impl DisplayResolved for LivenessResult {
-    fn fmt_with(&self, f: &mut std::fmt::Formatter, interner: &StringInterner) -> std::fmt::Result {
+    fn fmt_with(
+        &self,
+        f: &mut std::fmt::Formatter,
+        interner: &Interner<String>,
+    ) -> std::fmt::Result {
         writeln!(f, "(\n(in")?;
 
         for vec in &self.in_ {
@@ -53,8 +56,25 @@ fn empty_dataflow_set(func: &Function, capacity: usize) -> Vec<Vec<BitVector>> {
         .collect()
 }
 
+fn build_value_interner(func: &Function) -> Interner<Value> {
+    let mut interner = Interner::new();
+
+    for block in &func.basic_blocks {
+        for inst in &block.instructions {
+            for use_ in inst.uses() {
+                interner.intern(use_);
+            }
+            for def in inst.defs() {
+                interner.intern(def);
+            }
+        }
+    }
+
+    interner
+}
+
 pub fn compute_liveness(func: &Function) -> LivenessResult {
-    let mut interner = ValueInterner::build(func);
+    let mut interner = build_value_interner(func);
     let num_values = interner.len();
     let num_blocks = func.basic_blocks.len();
     let mut block_gen: Vec<BitVector> = vec![BitVector::with_capacity(num_values); num_blocks];
@@ -62,15 +82,15 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
 
     for (i, block) in func.basic_blocks.iter().enumerate() {
         for inst in &block.instructions {
-            block_gen[i].extend(inst.uses().iter().filter_map(|use_| {
-                let index = interner.intern(&use_);
+            block_gen[i].extend(inst.uses().into_iter().filter_map(|use_| {
+                let index = interner.intern(use_);
                 if !block_kill[i].test(index) {
                     Some(index)
                 } else {
                     None
                 }
             }));
-            block_kill[i].extend(inst.defs().iter().map(|def| interner.intern(&def)));
+            block_kill[i].extend(inst.defs().into_iter().map(|def| interner.intern(def)));
         }
     }
 
@@ -84,8 +104,8 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
         let i = id.0;
 
         block_out[i].clear();
-        for s in &cfg.successors[i] {
-            block_out[i].union(&block_in[s.0]);
+        for succ in &cfg.successors[i] {
+            block_out[i].union(&block_in[succ.0]);
         }
 
         let mut temp = block_out[i].clone();
@@ -107,8 +127,8 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
         let i = block.id.0;
 
         for (j, inst) in block.instructions.iter().enumerate().rev() {
-            gen_[i][j].extend(inst.uses().iter().map(|def| interner.intern(&def)));
-            kill[i][j].extend(inst.defs().iter().map(|def| interner.intern(&def)));
+            gen_[i][j].extend(inst.uses().into_iter().map(|def| interner.intern(def)));
+            kill[i][j].extend(inst.defs().into_iter().map(|def| interner.intern(def)));
 
             out[i][j] = if j == block.instructions.len() - 1 {
                 block_out[i].clone()

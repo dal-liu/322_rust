@@ -1,5 +1,5 @@
 use l2::*;
-use std::fmt;
+use std::{fmt, mem};
 
 #[derive(Debug)]
 pub struct SpillDisplay<'a> {
@@ -11,7 +11,7 @@ impl fmt::Display for SpillDisplay<'_> {
         writeln!(
             f,
             "(@{}\n\t{} {}",
-            self.func.name.resolved(&self.func.interner),
+            self.func.interner.resolve(self.func.name.0),
             self.func.args,
             self.func.locals,
         )?;
@@ -24,60 +24,68 @@ impl fmt::Display for SpillDisplay<'_> {
     }
 }
 
-pub fn spill_variable(func: &mut Function, var: &Value, prefix: &str) {
-    let mut spilled = false;
+pub fn spill_variable(func: &mut Function, var: &Value, prefix: &str) -> Vec<Value> {
+    let mut modified = false;
     let mut suffix = 0;
+    let mut spill_vars = Vec::new();
     let offset = func.locals * 8;
 
     for block in &mut func.basic_blocks {
-        let mut new_instructions = Vec::with_capacity(block.instructions.len());
+        let len = block.instructions.len();
 
-        for inst in &block.instructions {
+        for inst in mem::replace(&mut block.instructions, Vec::with_capacity(len)) {
             let spill_use = inst.uses().iter().any(|use_| use_ == var);
             let spill_def = inst.defs().iter().any(|def| def == var);
 
             let spill_var = if spill_use || spill_def {
-                spilled = true;
-                let name = &format!("{}{}", prefix, suffix);
+                let new_var = Value::Variable(SymbolId(
+                    func.interner.intern(format!("{}{}", prefix, suffix)),
+                ));
+                modified = true;
                 suffix += 1;
-                Some(Value::Variable(func.interner.intern(name)))
+                spill_vars.push(new_var.clone());
+                Some(new_var)
             } else {
                 None
             };
 
             if spill_use {
-                if let Some(ref spill_var) = spill_var {
-                    new_instructions.push(Instruction::Load {
-                        dst: spill_var.clone(),
+                if let Some(ref new_var) = spill_var {
+                    block.instructions.push(Instruction::Load {
+                        dst: new_var.clone(),
                         src: Value::Register(Register::RSP),
                         offset,
                     });
                 }
             }
 
-            let mut new_inst = inst.clone();
-            if let Some(ref spill_var) = spill_var {
-                new_inst.replace_value(var, spill_var);
+            if spill_use || spill_def {
+                let mut new_inst = inst.clone();
+                if let Some(ref new_var) = spill_var {
+                    new_inst.replace_value(var, new_var);
+                }
+                block.instructions.push(new_inst);
+            } else {
+                block.instructions.push(inst);
             }
-            new_instructions.push(new_inst);
 
             if spill_def {
-                if let Some(ref spill_var) = spill_var {
-                    new_instructions.push(Instruction::Store {
+                if let Some(ref new_var) = spill_var {
+                    block.instructions.push(Instruction::Store {
                         dst: Value::Register(Register::RSP),
                         offset,
-                        src: spill_var.clone(),
+                        src: new_var.clone(),
                     });
                 }
             }
         }
-
-        block.instructions = new_instructions;
     }
 
-    if spilled {
+    if modified {
         func.locals += 1;
     }
+
+    spill_vars
 }
 
 pub fn spill_variable_with_display<'a>(

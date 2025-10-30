@@ -100,6 +100,18 @@ impl InterferenceGraph {
         }
         self.graph[node].clear();
     }
+
+    pub fn degree(&self, node: usize) -> u32 {
+        self.graph[node].count()
+    }
+
+    pub fn len(&self) -> usize {
+        self.graph.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.graph.iter().all(|bitvec| bitvec.is_empty())
+    }
 }
 
 impl DisplayResolved for InterferenceGraph {
@@ -117,6 +129,21 @@ impl DisplayResolved for InterferenceGraph {
                     self.interner.resolve(i).resolved(interner),
                     line.join(" ")
                 )
+            })
+            .collect();
+        lines.sort();
+        writeln!(f, "{}", lines.join("\n"))
+    }
+}
+
+impl fmt::Display for InterferenceGraph {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut lines: Vec<String> = (0..self.graph.len())
+            .into_iter()
+            .map(|i| {
+                let mut line: Vec<String> = self.graph[i].iter().map(|j| j.to_string()).collect();
+                line.sort();
+                format!("{} {}", i, line.join(" "))
             })
             .collect();
         lines.sort();

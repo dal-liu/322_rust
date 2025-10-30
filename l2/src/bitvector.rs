@@ -64,6 +64,14 @@ impl BitVector {
         let bit_index = index % Self::BITWORD_SIZE;
         self.vec[word_index] &= !(1u64 << bit_index);
     }
+
+    pub fn count(&self) -> u32 {
+        self.vec.iter().fold(0, |acc, word| acc + word.count_ones())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.vec.iter().all(|&word| word == 0)
+    }
 }
 
 impl Extend<usize> for BitVector {

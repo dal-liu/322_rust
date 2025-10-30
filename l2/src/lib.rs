@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
 
+pub const NUM_GP_REGISTERS: u32 = 15;
+
 pub trait DisplayResolved {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result;
 

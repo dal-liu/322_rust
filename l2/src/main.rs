@@ -5,7 +5,7 @@ mod regalloc;
 
 use crate::analysis::compute_liveness;
 use crate::parser::{parse_file, parse_function_file, parse_spill_file};
-use crate::regalloc::{compute_interference, spill_variable_with_display};
+use crate::regalloc::{color_graph, compute_interference, spill_variable_with_display};
 
 use clap::Parser;
 use l2::*;
@@ -65,7 +65,8 @@ fn main() {
         }
         for func in &prog.functions {
             let liveness = compute_liveness(func);
-            compute_interference(func, &liveness);
+            let mut interference = compute_interference(func, &liveness);
+            color_graph(&mut interference);
         }
     }
 }

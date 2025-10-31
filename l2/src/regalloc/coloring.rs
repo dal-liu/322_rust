@@ -134,7 +134,5 @@ fn select(interference: &InterferenceGraph, mut stack: Vec<usize>) -> ColoringRe
 }
 
 pub fn color_graph(interference: InterferenceGraph) -> ColoringResult {
-    let stack = simplify(&interference);
-    let result = select(&interference, stack);
-    result
+    select(&interference, simplify(&interference))
 }

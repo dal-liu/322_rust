@@ -2,8 +2,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
 
-pub const NUM_GP_REGISTERS: u32 = 15;
-
 pub trait DisplayResolved {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result;
 
@@ -49,9 +47,30 @@ pub enum Register {
     RBX,
 }
 
+impl Register {
+    pub const GP_REGISTERS: &[Self] = &[
+        Register::RDI,
+        Register::RSI,
+        Register::RDX,
+        Register::RCX,
+        Register::R8,
+        Register::R9,
+        Register::RAX,
+        Register::R10,
+        Register::R11,
+        Register::R12,
+        Register::R13,
+        Register::R14,
+        Register::R15,
+        Register::RBP,
+        Register::RBX,
+    ];
+}
+
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Register::*;
+
         let reg = match self {
             RAX => "rax",
             RDI => "rdi",
@@ -246,7 +265,7 @@ impl Instruction {
         match self {
             Assign { src, .. } | Load { src, .. } => src
                 .is_gp_variable()
-                .then(|| vec![src.clone()])
+                .then_some(vec![src.clone()])
                 .unwrap_or_default(),
 
             Store { dst, src, .. }

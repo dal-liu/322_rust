@@ -7,11 +7,11 @@ pub struct BitVector {
 impl BitVector {
     const BITWORD_SIZE: usize = 64;
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        let num_words = (capacity + Self::BITWORD_SIZE - 1) / Self::BITWORD_SIZE;
+    pub fn with_len(len: usize) -> Self {
+        let num_words = (len + Self::BITWORD_SIZE - 1) / Self::BITWORD_SIZE;
         Self {
             vec: vec![0; num_words],
-            len: capacity,
+            len,
         }
     }
 
@@ -65,19 +65,30 @@ impl BitVector {
         self.vec[word_index] &= !(1u64 << bit_index);
     }
 
-    pub fn count(&self) -> u32 {
-        self.vec.iter().fold(0, |acc, word| acc + word.count_ones())
+    pub fn any(&self) -> bool {
+        self.vec.iter().any(|&word| word != 0)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.vec.iter().all(|&word| word == 0)
+    pub fn set_all(&mut self) {
+        let full_words = self.len / Self::BITWORD_SIZE;
+        let leftover_bits = self.len % Self::BITWORD_SIZE;
+        for i in 0..full_words {
+            self.vec[i] = u64::MAX;
+        }
+        if leftover_bits > 0 {
+            self.vec[full_words] = (1u64 << leftover_bits) - 1;
+        }
     }
-}
 
-impl Extend<usize> for BitVector {
-    fn extend<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
-        for index in iter {
-            self.set(index);
+    pub fn set_from<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
+        for i in iter {
+            self.set(i);
+        }
+    }
+
+    pub fn reset_all(&mut self) {
+        for word in &mut self.vec {
+            *word = 0;
         }
     }
 }

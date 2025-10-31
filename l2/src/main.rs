@@ -5,7 +5,7 @@ mod regalloc;
 
 use crate::analysis::compute_liveness;
 use crate::parser::{parse_file, parse_function_file, parse_spill_file};
-use crate::regalloc::{color_graph, compute_interference, spill_variable_with_display};
+use crate::regalloc::{InterferenceGraph, color_graph, spill_variable_with_display};
 
 use clap::Parser;
 use l2::*;
@@ -36,8 +36,8 @@ fn main() {
 
     if cli.spill {
         if let Some((mut func, var, prefix)) = parse_spill_file(file_name) {
-            let spill = spill_variable_with_display(&mut func, &var, &prefix);
-            print!("{}", spill);
+            let spill_display = spill_variable_with_display(&mut func, &var, &prefix);
+            print!("{}", spill_display);
         }
         return;
     }
@@ -53,7 +53,7 @@ fn main() {
     if cli.interference {
         if let Some(func) = parse_function_file(file_name) {
             let liveness = compute_liveness(&func);
-            let interference = compute_interference(&func, &liveness);
+            let interference = InterferenceGraph::build(&func, &liveness);
             print!("{}", interference.resolved(&func.interner));
         }
         return;
@@ -65,8 +65,9 @@ fn main() {
         }
         for func in &prog.functions {
             let liveness = compute_liveness(func);
-            let mut interference = compute_interference(func, &liveness);
-            color_graph(&mut interference);
+            let interference = InterferenceGraph::build(&func, &liveness);
+            let coloring = color_graph(interference);
+            println!("{}", &coloring.resolved(&func.interner));
         }
     }
 }

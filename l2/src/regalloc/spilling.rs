@@ -31,9 +31,9 @@ pub fn spill_variable(func: &mut Function, var: &Value, prefix: &str) -> Vec<Val
     let offset = func.locals * 8;
 
     for block in &mut func.basic_blocks {
-        let len = block.instructions.len();
+        let num_insts = block.instructions.len();
 
-        for inst in mem::replace(&mut block.instructions, Vec::with_capacity(len)) {
+        for inst in mem::replace(&mut block.instructions, Vec::with_capacity(num_insts)) {
             let spill_use = inst.uses().iter().any(|use_| use_ == var);
             let spill_def = inst.defs().iter().any(|def| def == var);
 

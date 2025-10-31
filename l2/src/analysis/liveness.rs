@@ -52,7 +52,7 @@ impl DisplayResolved for LivenessResult {
 fn empty_dataflow_set(func: &Function, capacity: usize) -> Vec<Vec<BitVector>> {
     func.basic_blocks
         .iter()
-        .map(|block| vec![BitVector::with_capacity(capacity); block.instructions.len()])
+        .map(|block| vec![BitVector::with_len(capacity); block.instructions.len()])
         .collect()
 }
 
@@ -77,12 +77,12 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
     let mut interner = build_value_interner(func);
     let num_values = interner.len();
     let num_blocks = func.basic_blocks.len();
-    let mut block_gen: Vec<BitVector> = vec![BitVector::with_capacity(num_values); num_blocks];
-    let mut block_kill: Vec<BitVector> = vec![BitVector::with_capacity(num_values); num_blocks];
+    let mut block_gen: Vec<BitVector> = vec![BitVector::with_len(num_values); num_blocks];
+    let mut block_kill: Vec<BitVector> = vec![BitVector::with_len(num_values); num_blocks];
 
     for (i, block) in func.basic_blocks.iter().enumerate() {
         for inst in &block.instructions {
-            block_gen[i].extend(inst.uses().into_iter().filter_map(|use_| {
+            block_gen[i].set_from(inst.uses().into_iter().filter_map(|use_| {
                 let index = interner.intern(use_);
                 if !block_kill[i].test(index) {
                     Some(index)
@@ -90,14 +90,14 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
                     None
                 }
             }));
-            block_kill[i].extend(inst.defs().into_iter().map(|def| interner.intern(def)));
+            block_kill[i].set_from(inst.defs().into_iter().map(|def| interner.intern(def)));
         }
     }
 
     let cfg = &func.cfg;
-    let mut block_in: Vec<BitVector> = vec![BitVector::with_capacity(num_values); num_blocks];
-    let mut block_out: Vec<BitVector> = vec![BitVector::with_capacity(num_values); num_blocks];
-    let mut worklist = Worklist::default();
+    let mut block_in: Vec<BitVector> = vec![BitVector::with_len(num_values); num_blocks];
+    let mut block_out: Vec<BitVector> = vec![BitVector::with_len(num_values); num_blocks];
+    let mut worklist = Worklist::new();
     worklist.extend(func.basic_blocks.iter().map(|block| &block.id));
 
     while let Some(id) = worklist.pop() {
@@ -127,8 +127,8 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
         let i = block.id.0;
 
         for (j, inst) in block.instructions.iter().enumerate().rev() {
-            gen_[i][j].extend(inst.uses().into_iter().map(|def| interner.intern(def)));
-            kill[i][j].extend(inst.defs().into_iter().map(|def| interner.intern(def)));
+            gen_[i][j].set_from(inst.uses().into_iter().map(|def| interner.intern(def)));
+            kill[i][j].set_from(inst.defs().into_iter().map(|def| interner.intern(def)));
 
             out[i][j] = if j == block.instructions.len() - 1 {
                 block_out[i].clone()

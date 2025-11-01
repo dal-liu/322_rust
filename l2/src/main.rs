@@ -3,6 +3,7 @@ mod bitvector;
 mod codegen;
 mod parser;
 mod regalloc;
+mod translation;
 
 use crate::analysis::compute_liveness;
 use crate::codegen::generate_code;

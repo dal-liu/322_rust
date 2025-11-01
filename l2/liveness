@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-outputString=`../target/debug/L2 -g 0 -l $@` ;
+outputString=`../target/release/L2 -g 0 -l $@` ;
 
 while read -r line ; do
   lineWithoutPrefix=`echo "$line" | sed "s/^(//"` ;

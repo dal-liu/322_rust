@@ -1,6 +1,6 @@
 PL_CLASS := L1
 DST_PL_CLASS := S
-COMPILER := ../target/debug/$(PL_CLASS)
+COMPILER := ../target/release/$(PL_CLASS)
 EXT_CLASS := $(PL_CLASS)
 CC_CLASS := $(PL_CLASS)c
 

@@ -22,7 +22,7 @@ fi
 origDir=`pwd` ;
 topDirOfOrigDir=`basename "$origDir"` ;
 rm -f prog.${extFile} ;
-../target/debug/${compiler} ${compilerArgs} ${programToCompile}
+../target/release/${compiler} ${compilerArgs} ${programToCompile}
 
 if test $? -ne 0 ; then
   exit 1;

@@ -2,7 +2,7 @@
 
 CFLAGS="-no-pie"
 
-../target/debug/L1 -g 1 "$@"
+../target/release/L1 -g 1 "$@"
 
 if test $? -ne 0 ; then
   exit 1;

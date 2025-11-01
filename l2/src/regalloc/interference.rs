@@ -4,23 +4,27 @@ use crate::bitvector::BitVector;
 use l2::*;
 use std::fmt;
 
-#[derive(Debug, Clone)]
-pub struct InterferenceGraph {
-    pub interner: Interner<Value>,
+#[derive(Debug)]
+pub struct InterferenceGraph<'a> {
+    pub interner: &'a Interner<Value>,
     pub graph: Vec<BitVector>,
 }
 
-impl InterferenceGraph {
-    pub fn build(func: &Function, liveness: &LivenessResult) -> Self {
-        let mut interner = liveness.interner.clone();
+impl<'a> InterferenceGraph<'a> {
+    pub fn build(func: &Function, liveness: &'a LivenessResult) -> Self {
         let gp_registers: Vec<usize> = Register::GP_REGISTERS
             .iter()
-            .map(|reg| interner.intern(Value::Register(reg.clone())))
+            .map(|&reg| {
+                liveness
+                    .interner
+                    .get(&Value::Register(reg))
+                    .expect("registers should be interned")
+            })
             .collect();
 
-        let num_values = interner.len();
+        let num_values = liveness.interner.len();
         let mut graph = Self {
-            interner,
+            interner: &liveness.interner,
             graph: vec![BitVector::with_len(num_values); num_values],
         };
 
@@ -92,7 +96,7 @@ impl InterferenceGraph {
     }
 }
 
-impl DisplayResolved for InterferenceGraph {
+impl DisplayResolved for InterferenceGraph<'_> {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         let mut lines: Vec<String> = (0..self.graph.len())
             .into_iter()
@@ -114,7 +118,7 @@ impl DisplayResolved for InterferenceGraph {
     }
 }
 
-impl fmt::Display for InterferenceGraph {
+impl fmt::Display for InterferenceGraph<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut lines: Vec<String> = (0..self.graph.len())
             .into_iter()
@@ -127,4 +131,11 @@ impl fmt::Display for InterferenceGraph {
         lines.sort();
         writeln!(f, "{}", lines.join("\n"))
     }
+}
+
+pub fn build_interference<'a>(
+    func: &Function,
+    liveness: &'a LivenessResult,
+) -> InterferenceGraph<'a> {
+    InterferenceGraph::build(func, liveness)
 }

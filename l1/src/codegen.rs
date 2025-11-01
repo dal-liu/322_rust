@@ -52,13 +52,13 @@ impl CodeGenerator {
         }
 
         for inst in &func.instructions {
-            self.emit_instruction(func, inst)?;
+            self.emit_instruction(inst, func.args, func.locals)?;
         }
 
         Ok(())
     }
 
-    fn emit_instruction(&mut self, func: &Function, inst: &Instruction) -> io::Result<()> {
+    fn emit_instruction(&mut self, inst: &Instruction, args: i64, locals: i64) -> io::Result<()> {
         use Instruction::*;
 
         match inst {
@@ -221,7 +221,7 @@ impl CodeGenerator {
             Label(label) => writeln!(self.stream, "_{}:", label),
             Goto(label) => writeln!(self.stream, "\tjmp _{}", label),
             Return => {
-                let stack_size = (func.locals + (func.args - 6).max(0)) * 8;
+                let stack_size = (locals + (args - 6).max(0)) * 8;
                 if stack_size > 0 {
                     writeln!(self.stream, "\taddq ${}, %rsp", stack_size)?;
                 }

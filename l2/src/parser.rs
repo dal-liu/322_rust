@@ -375,7 +375,6 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function, MyExtra<'src>> {
                 SymbolId(e.state().intern(name.to_string())),
                 args,
                 instructions,
-                mem::take(e.state()),
             )
         })
 }
@@ -392,9 +391,10 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program, MyExtra<'src>> {
                 .padded()
                 .then(any().repeated()),
         )
-        .map(|(entry_point, functions)| Program {
+        .map_with(|(entry_point, functions), e| Program {
             entry_point: entry_point.to_string(),
             functions,
+            interner: mem::take(e.state()),
         })
 }
 
@@ -402,20 +402,32 @@ pub fn parse_file(file_name: &str) -> Option<Program> {
     parse!(file_name, program())
 }
 
-pub fn parse_function_file(file_name: &str) -> Option<Function> {
-    parse!(file_name, function())
+pub fn parse_function_file(file_name: &str) -> Option<Program> {
+    parse!(
+        file_name,
+        function().map_with(|func, e| Program {
+            entry_point: "fetch".to_string(),
+            functions: vec![func],
+            interner: mem::take(e.state()),
+        })
+    )
 }
 
-pub fn parse_spill_file(file_name: &str) -> Option<(Function, Value, String)> {
+pub fn parse_spill_file(file_name: &str) -> Option<(Program, Value, String)> {
     parse!(
         file_name,
         function()
+            .map_with(|func, e| Program {
+                entry_point: "fetch".to_string(),
+                functions: vec![func],
+                interner: mem::take(e.state()),
+            })
             .then(variable_name().padded(),)
-            .map(|(mut func, name)| {
-                let var = Value::Variable(SymbolId(func.interner.intern(name.to_string())));
-                (func, var)
+            .map(|(mut prog, name)| {
+                let var = Value::Variable(SymbolId(prog.interner.intern(name.to_string())));
+                (prog, var)
             })
             .then(variable_name().map(|var| var.to_string()).padded())
-            .map(|((func, var), prefix)| (func, var, prefix))
+            .map(|((prog, var), prefix)| (prog, var, prefix))
     )
 }

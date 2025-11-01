@@ -59,6 +59,10 @@ fn empty_dataflow_set(func: &Function, capacity: usize) -> Vec<Vec<BitVector>> {
 fn build_value_interner(func: &Function) -> Interner<Value> {
     let mut interner = Interner::new();
 
+    for &reg in Register::GP_REGISTERS {
+        interner.intern(Value::Register(reg));
+    }
+
     for block in &func.basic_blocks {
         for inst in &block.instructions {
             for use_ in inst.uses() {

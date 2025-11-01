@@ -27,7 +27,7 @@ impl<'a, T: DisplayResolved + ?Sized> fmt::Display for DisplayResolvedWrapper<'a
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Register {
     RAX,
     RDI,
@@ -117,9 +117,9 @@ impl DisplayResolved for Value {
         match self {
             Self::Register(reg) => write!(f, "{}", reg),
             Self::Number(num) => write!(f, "{}", num),
-            Self::Label(id) => write!(f, ":{}", interner.resolve(id.0)),
-            Self::Function(id) => write!(f, "@{}", interner.resolve(id.0)),
-            Self::Variable(id) => write!(f, "%{}", interner.resolve(id.0)),
+            Self::Label(label) => write!(f, ":{}", interner.resolve(label.0)),
+            Self::Function(callee) => write!(f, "@{}", interner.resolve(callee.0)),
+            Self::Variable(var) => write!(f, "%{}", interner.resolve(var.0)),
         }
     }
 }
@@ -594,17 +594,11 @@ pub struct Function {
     pub args: i64,
     pub locals: i64,
     pub basic_blocks: Vec<BasicBlock>,
-    pub interner: Interner<String>,
     pub cfg: ControlFlowGraph,
 }
 
 impl Function {
-    pub fn build(
-        name: SymbolId,
-        args: i64,
-        instructions: Vec<Instruction>,
-        interner: Interner<String>,
-    ) -> Self {
+    pub fn build(name: SymbolId, args: i64, instructions: Vec<Instruction>) -> Self {
         let mut basic_blocks = vec![BasicBlock {
             id: BlockId(0),
             instructions: Vec::new(),
@@ -654,23 +648,17 @@ impl Function {
             args,
             locals: 0,
             basic_blocks,
-            interner,
             cfg,
         }
     }
 }
 
-impl fmt::Display for Function {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(
-            f,
-            "(@{}\n\t{}",
-            self.interner.resolve(self.name.0),
-            self.args
-        )?;
+impl DisplayResolved for Function {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
+        writeln!(f, "(@{}\n\t{}", interner.resolve(self.name.0), self.args)?;
 
         for block in &self.basic_blocks {
-            write!(f, "{}", block.resolved(&self.interner))?;
+            write!(f, "{}", block.resolved(interner))?;
         }
 
         writeln!(f, ")")
@@ -692,14 +680,11 @@ impl<T: Clone + Eq + Hash> Interner<T> {
     }
 
     pub fn intern(&mut self, item: T) -> usize {
-        if let Some(&index) = self.map.get(&item) {
-            index
-        } else {
+        *self.map.entry(item).or_insert_with_key(|key| {
             let index = self.vec.len();
-            self.map.insert(item.clone(), index);
-            self.vec.push(item);
+            self.vec.push(key.clone());
             index
-        }
+        })
     }
 
     pub fn resolve(&self, index: usize) -> &T {
@@ -726,11 +711,10 @@ impl ControlFlowGraph {
         let label_to_block: HashMap<SymbolId, BlockId> = basic_blocks
             .iter()
             .filter_map(|block| {
-                if let Some(Instruction::Label(id)) = block.instructions.first() {
-                    Some((id.clone(), block.id.clone()))
-                } else {
-                    None
-                }
+                block.instructions.first().and_then(|inst| match inst {
+                    Instruction::Label(label) => Some((label.clone(), block.id.clone())),
+                    _ => None,
+                })
             })
             .collect();
 
@@ -787,6 +771,7 @@ impl ControlFlowGraph {
 pub struct Program {
     pub entry_point: String,
     pub functions: Vec<Function>,
+    pub interner: Interner<String>,
 }
 
 impl fmt::Display for Program {
@@ -794,7 +779,7 @@ impl fmt::Display for Program {
         writeln!(f, "(@{}", self.entry_point)?;
 
         for func in &self.functions {
-            writeln!(f, "{}", func)?;
+            writeln!(f, "{}", func.resolved(&self.interner))?;
         }
 
         writeln!(f, ")")

@@ -257,8 +257,7 @@ pub struct Function {
 
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "(@{}", self.name)?;
-        writeln!(f, "\t{} {}", self.args, self.locals)?;
+        writeln!(f, "(@{}\n\t{} {}", self.name, self.args, self.locals)?;
 
         for inst in &self.instructions {
             writeln!(f, "\t{}", inst)?;

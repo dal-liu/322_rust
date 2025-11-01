@@ -1,11 +1,13 @@
 mod analysis;
 mod bitvector;
+mod codegen;
 mod parser;
 mod regalloc;
 
 use crate::analysis::compute_liveness;
+use crate::codegen::generate_code;
 use crate::parser::{parse_file, parse_function_file, parse_spill_file};
-use crate::regalloc::{InterferenceGraph, allocate_registers, spill_with_display};
+use crate::regalloc::{allocate_registers, build_interference, spill_with_display};
 
 use clap::Parser;
 use l2::*;
@@ -35,37 +37,38 @@ fn main() {
     let file_name = &cli.source;
 
     if cli.spill {
-        if let Some((mut func, var, prefix)) = parse_spill_file(file_name) {
-            let spill = spill_with_display(&mut func, &var, &prefix);
+        if let Some((mut prog, var, prefix)) = parse_spill_file(file_name) {
+            let spill =
+                spill_with_display(&mut prog.functions[0], &var, &prefix, &mut prog.interner);
             print!("{}", spill);
         }
         return;
     }
 
     if cli.liveness {
-        if let Some(func) = parse_function_file(file_name) {
-            let liveness = compute_liveness(&func);
-            print!("{}", liveness.resolved(&func.interner));
+        if let Some(prog) = parse_function_file(file_name) {
+            let liveness = compute_liveness(&prog.functions[0]);
+            print!("{}", liveness.resolved(&prog.interner));
         }
         return;
     }
 
     if cli.interference {
-        if let Some(func) = parse_function_file(file_name) {
-            let liveness = compute_liveness(&func);
-            let interference = InterferenceGraph::build(&func, &liveness);
-            print!("{}", interference.resolved(&func.interner));
+        if let Some(prog) = parse_function_file(file_name) {
+            let liveness = compute_liveness(&prog.functions[0]);
+            let interference = build_interference(&prog.functions[0], &liveness);
+            print!("{}", interference.resolved(&prog.interner));
         }
         return;
     }
 
-    if let Some(prog) = parse_file(file_name) {
+    if let Some(mut prog) = parse_file(file_name) {
         if cli.verbose {
             print!("{}", &prog);
         }
-        for func in &prog.functions {
-            let new_func = allocate_registers(func);
-            println!("{}", &new_func);
+        for func in &mut prog.functions {
+            allocate_registers(func, &mut prog.interner);
         }
+        generate_code(&prog).unwrap();
     }
 }

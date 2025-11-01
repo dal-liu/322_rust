@@ -91,6 +91,12 @@ impl BitVector {
             *word = 0;
         }
     }
+
+    pub fn reset_from<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
+        for i in iter {
+            self.reset(i);
+        }
+    }
 }
 
 pub struct BitVectorIterator<'a> {

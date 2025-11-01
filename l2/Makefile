@@ -17,7 +17,8 @@ test_interference: $(COMPILER)
 	./scripts/testInterference.sh
 
 clean:
-	rm -fr *.out *.o `find tests -iname *.tmp`
+	rm -fr bin obj *.out *.o core.* `find tests -iname *.tmp`
+	rm -fr `find tests -iname *\.out\.interp`
 	rm -fr *.$(DST_PL_CLASS)
 
-.PHONY: test clean
+.PHONY: test test_liveness test_spill test_interference clean

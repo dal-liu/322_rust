@@ -5,6 +5,7 @@ use std::{fmt, mem};
 #[derive(Debug)]
 pub struct SpillDisplay<'a> {
     func: &'a Function,
+    interner: &'a Interner<String>,
 }
 
 impl fmt::Display for SpillDisplay<'_> {
@@ -12,22 +13,27 @@ impl fmt::Display for SpillDisplay<'_> {
         writeln!(
             f,
             "(@{}\n\t{} {}",
-            self.func.interner.resolve(self.func.name.0),
+            self.interner.resolve(self.func.name.0),
             self.func.args,
             self.func.locals,
         )?;
 
         for block in &self.func.basic_blocks {
-            write!(f, "{}", block.resolved(&self.func.interner))?;
+            write!(f, "{}", block.resolved(&self.interner))?;
         }
 
         writeln!(f, ")")
     }
 }
 
-pub fn spill(func: &mut Function, var: &Value, prefix: &str) -> Vec<Value> {
+pub fn spill(
+    func: &mut Function,
+    var: &Value,
+    prefix: &str,
+    suffix: &mut i32,
+    interner: &mut Interner<String>,
+) -> Vec<Value> {
     let mut modified = false;
-    let mut suffix = 0;
     let mut spill_vars = Vec::new();
     let offset = func.locals * 8;
 
@@ -38,11 +44,10 @@ pub fn spill(func: &mut Function, var: &Value, prefix: &str) -> Vec<Value> {
             let spill_def = inst.defs().iter().any(|def| def == var);
 
             let spill_var = if spill_use || spill_def {
-                let new_var = Value::Variable(SymbolId(
-                    func.interner.intern(format!("{}{}", prefix, suffix)),
-                ));
+                let new_var =
+                    Value::Variable(SymbolId(interner.intern(format!("{}{}", prefix, suffix))));
                 modified = true;
-                suffix += 1;
+                *suffix += 1;
                 spill_vars.push(new_var.clone());
                 Some(new_var)
             } else {
@@ -92,13 +97,19 @@ pub fn spill_with_display<'a>(
     func: &'a mut Function,
     var: &Value,
     prefix: &str,
+    interner: &'a mut Interner<String>,
 ) -> SpillDisplay<'a> {
-    spill(func, var, prefix);
-    SpillDisplay { func }
+    let mut suffix = 0;
+    spill(func, var, prefix, &mut suffix, interner);
+    SpillDisplay { func, interner }
 }
 
-pub fn spill_all(func: &mut Function, prefix: &str) {
-    let mut suffix = 0;
+pub fn spill_all(
+    func: &mut Function,
+    prefix: &str,
+    suffix: &mut i32,
+    interner: &mut Interner<String>,
+) {
     let mut var_to_offset = HashMap::new();
 
     for block in &mut func.basic_blocks {
@@ -110,34 +121,29 @@ pub fn spill_all(func: &mut Function, prefix: &str) {
 
             for use_ in &uses {
                 if matches!(use_, Value::Variable(_)) && !var_to_spill.contains_key(use_) {
-                    let new_var = Value::Variable(SymbolId(
-                        func.interner.intern(format!("{}{}", prefix, suffix)),
-                    ));
-                    suffix += 1;
+                    let new_var =
+                        Value::Variable(SymbolId(interner.intern(format!("{}{}", prefix, suffix))));
+                    *suffix += 1;
                     var_to_spill.insert(use_, new_var);
                 }
             }
 
             for def in &defs {
                 if matches!(def, Value::Variable(_)) && !var_to_spill.contains_key(def) {
-                    let new_var = Value::Variable(SymbolId(
-                        func.interner.intern(format!("{}{}", prefix, suffix)),
-                    ));
-                    suffix += 1;
+                    let new_var =
+                        Value::Variable(SymbolId(interner.intern(format!("{}{}", prefix, suffix))));
+                    *suffix += 1;
                     var_to_spill.insert(def, new_var);
                 }
             }
 
             for use_ in &uses {
                 if let Some(new_var) = var_to_spill.get(use_) {
-                    let offset = if let Some(&offset) = var_to_offset.get(use_) {
-                        offset
-                    } else {
+                    let offset = *var_to_offset.entry(use_.clone()).or_insert_with(|| {
                         let offset = func.locals * 8;
                         func.locals += 1;
-                        var_to_offset.insert(use_.clone(), offset);
                         offset
-                    };
+                    });
                     block.instructions.push(Instruction::Load {
                         dst: new_var.clone(),
                         src: Value::Register(Register::RSP),

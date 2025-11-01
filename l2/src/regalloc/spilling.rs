@@ -160,18 +160,15 @@ pub fn spill_all(
 
             for def in &defs {
                 if let Some(new_var) = var_to_spill.get(def) {
-                    let offset = if let Some(&offset) = var_to_offset.get(def) {
-                        offset
-                    } else {
+                    let offset = *var_to_offset.entry(def.clone()).or_insert_with(|| {
                         let offset = func.locals * 8;
                         func.locals += 1;
-                        var_to_offset.insert(def.clone(), offset);
                         offset
-                    };
-                    block.instructions.push(Instruction::Load {
-                        dst: new_var.clone(),
-                        src: Value::Register(Register::RSP),
-                        offset,
+                    });
+                    block.instructions.push(Instruction::Store {
+                        dst: Value::Register(Register::RSP),
+                        offset: offset,
+                        src: new_var.clone(),
                     })
                 }
             }

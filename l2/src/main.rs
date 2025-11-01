@@ -5,7 +5,7 @@ mod regalloc;
 
 use crate::analysis::compute_liveness;
 use crate::parser::{parse_file, parse_function_file, parse_spill_file};
-use crate::regalloc::{InterferenceGraph, color_graph, spill_variable_with_display};
+use crate::regalloc::{InterferenceGraph, allocate_registers, spill_with_display};
 
 use clap::Parser;
 use l2::*;
@@ -36,8 +36,8 @@ fn main() {
 
     if cli.spill {
         if let Some((mut func, var, prefix)) = parse_spill_file(file_name) {
-            let spill_display = spill_variable_with_display(&mut func, &var, &prefix);
-            print!("{}", spill_display);
+            let spill = spill_with_display(&mut func, &var, &prefix);
+            print!("{}", spill);
         }
         return;
     }
@@ -64,10 +64,8 @@ fn main() {
             print!("{}", &prog);
         }
         for func in &prog.functions {
-            let liveness = compute_liveness(func);
-            let interference = InterferenceGraph::build(&func, &liveness);
-            let coloring = color_graph(interference);
-            println!("{}", &coloring.resolved(&func.interner));
+            let new_func = allocate_registers(func);
+            println!("{}", &new_func);
         }
     }
 }

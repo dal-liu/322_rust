@@ -570,7 +570,7 @@ impl DisplayResolved for Instruction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BlockId,
     pub instructions: Vec<Instruction>,
@@ -588,7 +588,7 @@ impl DisplayResolved for BasicBlock {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct BlockId(pub usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
     pub name: SymbolId,
     pub args: i64,
@@ -715,7 +715,7 @@ impl<T: Clone + Eq + Hash> Interner<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ControlFlowGraph {
     pub successors: Vec<Vec<BlockId>>,
     pub predecessors: Vec<Vec<BlockId>>,

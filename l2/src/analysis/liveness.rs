@@ -79,10 +79,10 @@ fn build_value_interner(func: &Function) -> Interner<Value> {
 
 pub fn compute_liveness(func: &Function) -> LivenessResult {
     let mut interner = build_value_interner(func);
-    let num_values = interner.len();
+    let num_gp_variables = interner.len();
     let num_blocks = func.basic_blocks.len();
-    let mut block_gen: Vec<BitVector> = vec![BitVector::with_len(num_values); num_blocks];
-    let mut block_kill: Vec<BitVector> = vec![BitVector::with_len(num_values); num_blocks];
+    let mut block_gen: Vec<BitVector> = vec![BitVector::with_len(num_gp_variables); num_blocks];
+    let mut block_kill: Vec<BitVector> = vec![BitVector::with_len(num_gp_variables); num_blocks];
 
     for (i, block) in func.basic_blocks.iter().enumerate() {
         for inst in &block.instructions {
@@ -99,8 +99,8 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
     }
 
     let cfg = &func.cfg;
-    let mut block_in: Vec<BitVector> = vec![BitVector::with_len(num_values); num_blocks];
-    let mut block_out: Vec<BitVector> = vec![BitVector::with_len(num_values); num_blocks];
+    let mut block_in: Vec<BitVector> = vec![BitVector::with_len(num_gp_variables); num_blocks];
+    let mut block_out: Vec<BitVector> = vec![BitVector::with_len(num_gp_variables); num_blocks];
     let mut worklist = Worklist::new();
     worklist.extend(func.basic_blocks.iter().map(|block| &block.id));
 
@@ -122,10 +122,10 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
         }
     }
 
-    let mut gen_ = empty_dataflow_set(func, num_values);
-    let mut kill = empty_dataflow_set(func, num_values);
-    let mut in_ = empty_dataflow_set(func, num_values);
-    let mut out = empty_dataflow_set(func, num_values);
+    let mut gen_ = empty_dataflow_set(func, num_gp_variables);
+    let mut kill = empty_dataflow_set(func, num_gp_variables);
+    let mut in_ = empty_dataflow_set(func, num_gp_variables);
+    let mut out = empty_dataflow_set(func, num_gp_variables);
 
     for block in &func.basic_blocks {
         let i = block.id.0;

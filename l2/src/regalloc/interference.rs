@@ -22,10 +22,10 @@ impl<'a> InterferenceGraph<'a> {
             })
             .collect();
 
-        let num_values = liveness.interner.len();
+        let num_gp_variables = liveness.interner.len();
         let mut graph = Self {
             interner: &liveness.interner,
-            graph: vec![BitVector::with_len(num_values); num_values],
+            graph: vec![BitVector::with_len(num_gp_variables); num_gp_variables],
         };
 
         for &u in &gp_registers {

@@ -69,17 +69,6 @@ impl BitVector {
         self.vec.iter().any(|&word| word != 0)
     }
 
-    pub fn set_all(&mut self) {
-        let full_words = self.len / Self::BITWORD_SIZE;
-        let leftover_bits = self.len % Self::BITWORD_SIZE;
-        for i in 0..full_words {
-            self.vec[i] = u64::MAX;
-        }
-        if leftover_bits > 0 {
-            self.vec[full_words] = (1u64 << leftover_bits) - 1;
-        }
-    }
-
     pub fn set_from<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
         for i in iter {
             self.set(i);
@@ -89,12 +78,6 @@ impl BitVector {
     pub fn reset_all(&mut self) {
         for word in &mut self.vec {
             *word = 0;
-        }
-    }
-
-    pub fn reset_from<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
-        for i in iter {
-            self.reset(i);
         }
     }
 }

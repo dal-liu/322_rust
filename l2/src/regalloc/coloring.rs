@@ -2,7 +2,7 @@ use crate::bitvector::BitVector;
 use crate::regalloc::interference::InterferenceGraph;
 
 use l2::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Debug)]
@@ -49,25 +49,14 @@ impl fmt::Display for ColoringResult<'_> {
     }
 }
 
-fn gp_registers(interner: &Interner<Value>) -> Vec<usize> {
-    Register::GP_REGISTERS
-        .iter()
-        .map(|&reg| {
-            interner
-                .get(&Value::Register(reg))
-                .expect("registers should be interned")
-        })
-        .collect()
-}
-
 fn simplify(interference: &InterferenceGraph) -> Vec<usize> {
-    let gp_registers = gp_registers(&interference.interner);
+    let gp_registers: HashSet<usize> = gp_registers(&interference.interner);
     let num_gp_registers = gp_registers.len();
+    let num_gp_variables = interference.graph.len();
 
     let mut stack = Vec::new();
-    let mut worklist = BitVector::with_len(interference.graph.len());
-    worklist.set_all();
-    worklist.reset_from(gp_registers.iter().copied());
+    let mut worklist = BitVector::with_len(num_gp_variables);
+    worklist.set_from((0..num_gp_variables).filter(|i| !gp_registers.contains(i)));
 
     while worklist.any() {
         let remaining_degrees: Vec<(usize, usize)> = worklist
@@ -83,9 +72,9 @@ fn simplify(interference: &InterferenceGraph) -> Vec<usize> {
 
         let removed_node = remaining_degrees
             .iter()
-            .filter(|&&(_, degree)| degree < num_gp_registers)
-            .max_by_key(|&&(_, degree)| degree)
-            .or_else(|| remaining_degrees.iter().max_by_key(|&&(_, degree)| degree))
+            .filter(|&&(_, k)| k < num_gp_registers)
+            .max_by_key(|&&(_, k)| k)
+            .or_else(|| remaining_degrees.iter().max_by_key(|&&(_, k)| k))
             .map(|&(node, _)| node)
             .expect("graph should not be empty");
 
@@ -97,15 +86,15 @@ fn simplify(interference: &InterferenceGraph) -> Vec<usize> {
 }
 
 fn select<'a>(interference: &'a InterferenceGraph, mut stack: Vec<usize>) -> ColoringResult<'a> {
-    let gp_registers = gp_registers(&interference.interner);
+    let gp_registers: Vec<usize> = gp_registers(&interference.interner);
     let num_gp_registers = gp_registers.len();
 
     let mut mapping: HashMap<usize, usize> = gp_registers.iter().map(|&reg| (reg, reg)).collect();
     let mut spilled: Vec<usize> = Vec::new();
-    let mut adjacent_colors = BitVector::with_len(num_gp_registers);
+    let mut neighbor_colors = BitVector::with_len(num_gp_registers);
 
     while let Some(u) = stack.pop() {
-        adjacent_colors.set_from(interference.graph[u].iter().filter_map(|v| {
+        neighbor_colors.set_from(interference.graph[u].iter().filter_map(|v| {
             mapping
                 .get(&v)
                 .and_then(|&color| gp_registers.iter().position(|&reg| reg == color))
@@ -114,14 +103,14 @@ fn select<'a>(interference: &'a InterferenceGraph, mut stack: Vec<usize>) -> Col
         if let Some((_, &color)) = gp_registers
             .iter()
             .enumerate()
-            .find(|&(index, _)| !adjacent_colors.test(index))
+            .find(|&(i, _)| !neighbor_colors.test(i))
         {
             mapping.insert(u, color);
         } else {
             spilled.push(u);
         }
 
-        adjacent_colors.reset_all();
+        neighbor_colors.reset_all();
     }
 
     ColoringResult {
@@ -129,6 +118,17 @@ fn select<'a>(interference: &'a InterferenceGraph, mut stack: Vec<usize>) -> Col
         mapping,
         spilled,
     }
+}
+
+fn gp_registers<T: FromIterator<usize>>(interner: &Interner<Value>) -> T {
+    Register::GP_REGISTERS
+        .iter()
+        .map(|&reg| {
+            interner
+                .get(&Value::Register(reg))
+                .expect("registers should be interned")
+        })
+        .collect()
 }
 
 pub fn color_graph<'a>(interference: &'a InterferenceGraph) -> ColoringResult<'a> {

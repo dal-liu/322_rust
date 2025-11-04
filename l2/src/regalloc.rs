@@ -14,29 +14,26 @@ pub use crate::regalloc::interference::build_interference;
 pub use crate::regalloc::spilling::spill_with_display;
 
 fn assign_colors(func: &mut Function, coloring: &ColoringResult) {
-    let instructions = &mut func
-        .basic_blocks
+    func.basic_blocks
         .iter_mut()
-        .flat_map(|block| &mut block.instructions);
-
-    for inst in instructions {
-        let variables = inst
-            .defs()
-            .into_iter()
-            .chain(inst.uses())
-            .filter(|val| matches!(val, Value::Variable(_)));
-
-        for var in variables {
-            let index = coloring
-                .interner
-                .get(&var)
-                .expect("variables should be interned");
-
-            if let Some(&color) = coloring.mapping.get(&index) {
-                inst.replace_value(&var, coloring.interner.resolve(color));
-            }
-        }
-    }
+        .flat_map(|block| &mut block.instructions)
+        .for_each(|inst| {
+            inst.defs()
+                .into_iter()
+                .chain(inst.uses())
+                .filter(|val| matches!(val, Value::Variable(_)))
+                .for_each(|var| {
+                    let index = coloring
+                        .interner
+                        .get(&var)
+                        .expect("variables should be interned");
+                    let color = coloring
+                        .mapping
+                        .get(&index)
+                        .expect("variables should have a color");
+                    inst.replace_value(&var, coloring.interner.resolve(*color));
+                })
+        });
 }
 
 pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) {

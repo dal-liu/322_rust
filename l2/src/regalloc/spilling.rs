@@ -104,12 +104,8 @@ pub fn spill_with_display<'a>(
     SpillDisplay { func, interner }
 }
 
-pub fn spill_all(
-    func: &mut Function,
-    prefix: &str,
-    suffix: &mut i32,
-    interner: &mut Interner<String>,
-) {
+pub fn spill_all(func: &mut Function, prefix: &str, interner: &mut Interner<String>) {
+    let mut suffix = 0;
     let mut var_to_offset = HashMap::new();
 
     for block in &mut func.basic_blocks {
@@ -123,7 +119,7 @@ pub fn spill_all(
                 if matches!(use_, Value::Variable(_)) && !var_to_spill.contains_key(use_) {
                     let new_var =
                         Value::Variable(SymbolId(interner.intern(format!("{}{}", prefix, suffix))));
-                    *suffix += 1;
+                    suffix += 1;
                     var_to_spill.insert(use_, new_var);
                 }
             }
@@ -132,7 +128,7 @@ pub fn spill_all(
                 if matches!(def, Value::Variable(_)) && !var_to_spill.contains_key(def) {
                     let new_var =
                         Value::Variable(SymbolId(interner.intern(format!("{}{}", prefix, suffix))));
-                    *suffix += 1;
+                    suffix += 1;
                     var_to_spill.insert(def, new_var);
                 }
             }
@@ -167,7 +163,7 @@ pub fn spill_all(
                     });
                     block.instructions.push(Instruction::Store {
                         dst: Value::Register(Register::RSP),
-                        offset: offset,
+                        offset,
                         src: new_var.clone(),
                     })
                 }

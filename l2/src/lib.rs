@@ -598,7 +598,7 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn build(name: SymbolId, args: i64, instructions: Vec<Instruction>) -> Self {
+    pub fn new(name: SymbolId, args: i64, instructions: Vec<Instruction>) -> Self {
         let mut basic_blocks = vec![BasicBlock {
             id: BlockId(0),
             instructions: Vec::new(),
@@ -641,7 +641,7 @@ impl Function {
             basic_blocks.pop();
         }
 
-        let cfg = ControlFlowGraph::build(&basic_blocks);
+        let cfg = ControlFlowGraph::new(&basic_blocks);
 
         Self {
             name,
@@ -707,7 +707,7 @@ pub struct ControlFlowGraph {
 }
 
 impl ControlFlowGraph {
-    pub fn build(basic_blocks: &[BasicBlock]) -> Self {
+    pub fn new(basic_blocks: &[BasicBlock]) -> Self {
         let label_to_block: HashMap<SymbolId, BlockId> = basic_blocks
             .iter()
             .filter_map(|block| {

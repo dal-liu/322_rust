@@ -11,7 +11,13 @@ pub struct InterferenceGraph<'a> {
 }
 
 impl<'a> InterferenceGraph<'a> {
-    pub fn build(func: &Function, liveness: &'a LivenessResult) -> Self {
+    pub fn new(func: &Function, liveness: &'a LivenessResult) -> Self {
+        let num_gp_variables = liveness.interner.len();
+        let mut graph = Self {
+            interner: &liveness.interner,
+            graph: vec![BitVector::with_len(num_gp_variables); num_gp_variables],
+        };
+
         let gp_registers: Vec<usize> = Register::GP_REGISTERS
             .iter()
             .map(|&reg| {
@@ -21,12 +27,6 @@ impl<'a> InterferenceGraph<'a> {
                     .expect("registers should be interned")
             })
             .collect();
-
-        let num_gp_variables = liveness.interner.len();
-        let mut graph = Self {
-            interner: &liveness.interner,
-            graph: vec![BitVector::with_len(num_gp_variables); num_gp_variables],
-        };
 
         for &u in &gp_registers {
             for &v in &gp_registers {
@@ -137,5 +137,5 @@ pub fn build_interference<'a>(
     func: &Function,
     liveness: &'a LivenessResult,
 ) -> InterferenceGraph<'a> {
-    InterferenceGraph::build(func, liveness)
+    InterferenceGraph::new(func, liveness)
 }

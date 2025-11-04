@@ -371,7 +371,7 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function, MyExtra<'src>> {
         )
         .then_ignore(just(')').padded_by(comment().repeated()).padded())
         .map_with(|((name, args), instructions), e| {
-            Function::build(
+            Function::new(
                 SymbolId(e.state().intern(name.to_string())),
                 args,
                 instructions,

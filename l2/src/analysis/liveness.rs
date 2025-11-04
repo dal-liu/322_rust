@@ -56,7 +56,7 @@ fn empty_dataflow_set(func: &Function, capacity: usize) -> Vec<Vec<BitVector>> {
         .collect()
 }
 
-fn build_value_interner(func: &Function) -> Interner<Value> {
+fn value_interner(func: &Function) -> Interner<Value> {
     let mut interner = Interner::new();
 
     for &reg in Register::GP_REGISTERS {
@@ -78,7 +78,7 @@ fn build_value_interner(func: &Function) -> Interner<Value> {
 }
 
 pub fn compute_liveness(func: &Function) -> LivenessResult {
-    let mut interner = build_value_interner(func);
+    let mut interner = value_interner(func);
     let num_gp_variables = interner.len();
     let num_blocks = func.basic_blocks.len();
     let mut block_gen: Vec<BitVector> = vec![BitVector::with_len(num_gp_variables); num_blocks];

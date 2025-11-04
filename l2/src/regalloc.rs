@@ -14,22 +14,26 @@ pub use crate::regalloc::interference::build_interference;
 pub use crate::regalloc::spilling::spill_with_display;
 
 fn assign_colors(func: &mut Function, coloring: &ColoringResult) {
-    for block in &mut func.basic_blocks {
-        for inst in &mut block.instructions {
-            for var in inst
-                .defs()
-                .into_iter()
-                .chain(inst.uses())
-                .filter(|def| matches!(def, Value::Variable(_)))
-            {
-                if let Some(&color) = coloring.mapping.get(
-                    &coloring
-                        .interner
-                        .get(&var)
-                        .expect("all variables should be interned"),
-                ) {
-                    inst.replace_value(&var, coloring.interner.resolve(color));
-                }
+    let instructions = &mut func
+        .basic_blocks
+        .iter_mut()
+        .flat_map(|block| &mut block.instructions);
+
+    for inst in instructions {
+        let variables = inst
+            .defs()
+            .into_iter()
+            .chain(inst.uses())
+            .filter(|val| matches!(val, Value::Variable(_)));
+
+        for var in variables {
+            let index = coloring
+                .interner
+                .get(&var)
+                .expect("variables should be interned");
+
+            if let Some(&color) = coloring.mapping.get(&index) {
+                inst.replace_value(&var, coloring.interner.resolve(color));
             }
         }
     }
@@ -67,8 +71,7 @@ pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) 
             }
         } else {
             *func = original_func.clone();
-            suffix = 0;
-            spill_all(func, prefix, &mut suffix, interner);
+            spill_all(func, prefix, interner);
         }
     }
 }

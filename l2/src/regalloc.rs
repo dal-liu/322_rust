@@ -27,10 +27,12 @@ fn assign_colors(func: &mut Function, coloring: &ColoringResult) {
                         .interner
                         .get(&var)
                         .expect("variables should be interned");
+
                     let color = coloring
                         .mapping
                         .get(&index)
                         .expect("variables should have a color");
+
                     inst.replace_value(&var, coloring.interner.resolve(*color));
                 })
         });

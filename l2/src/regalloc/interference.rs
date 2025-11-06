@@ -15,7 +15,7 @@ impl<'a> InterferenceGraph<'a> {
         let num_gp_variables = liveness.interner.len();
         let mut graph = Self {
             interner: &liveness.interner,
-            graph: vec![BitVector::with_len(num_gp_variables); num_gp_variables],
+            graph: vec![BitVector::new(num_gp_variables); num_gp_variables],
         };
 
         let gp_registers: Vec<usize> = Register::GP_REGISTERS
@@ -73,10 +73,12 @@ impl<'a> InterferenceGraph<'a> {
                             .interner
                             .get(&Value::Register(Register::RCX))
                             .unwrap_or_else(|| panic!("rcx not interned"));
+
                         let u = graph
                             .interner
                             .get(src)
                             .unwrap_or_else(|| panic!("{:?} not interned", src));
+
                         for &v in &gp_registers {
                             if v != rcx {
                                 graph.add_edge(u, v);

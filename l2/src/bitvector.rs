@@ -7,7 +7,7 @@ pub struct BitVector {
 impl BitVector {
     const BITWORD_SIZE: usize = 64;
 
-    pub fn with_len(len: usize) -> Self {
+    pub fn new(len: usize) -> Self {
         let num_words = (len + Self::BITWORD_SIZE - 1) / Self::BITWORD_SIZE;
         Self {
             vec: vec![0; num_words],
@@ -42,7 +42,7 @@ impl BitVector {
         }
     }
 
-    pub fn iter(&self) -> BitVectorIterator {
+    pub fn iter(&self) -> BitVectorIterator<'_> {
         BitVectorIterator {
             vec: &self.vec,
             word_index: 0,
@@ -69,7 +69,7 @@ impl BitVector {
         self.vec.iter().any(|&word| word != 0)
     }
 
-    pub fn set_from<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
+    pub fn set_from(&mut self, iter: impl Iterator<Item = usize>) {
         for i in iter {
             self.set(i);
         }
@@ -79,6 +79,12 @@ impl BitVector {
         for word in &mut self.vec {
             *word = 0;
         }
+    }
+
+    pub fn count(&self) -> usize {
+        self.vec
+            .iter()
+            .fold(0, |acc, word| acc + word.count_ones() as usize)
     }
 }
 

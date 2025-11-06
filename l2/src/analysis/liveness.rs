@@ -35,8 +35,8 @@ impl DisplayResolved for LivenessResult {
         writeln!(f, ")\n\n(out")?;
 
         for vec in &self.out {
-            for bitvec in vec {
-                let mut line: Vec<String> = bitvec
+            for bit in vec {
+                let mut line: Vec<String> = bit
                     .iter()
                     .map(|val| self.interner.resolve(val).resolved(interner).to_string())
                     .collect();
@@ -49,10 +49,10 @@ impl DisplayResolved for LivenessResult {
     }
 }
 
-fn empty_dataflow_set(func: &Function, capacity: usize) -> Vec<Vec<BitVector>> {
+fn empty_dataflow_set(func: &Function, len: usize) -> Vec<Vec<BitVector>> {
     func.basic_blocks
         .iter()
-        .map(|block| vec![BitVector::with_len(capacity); block.instructions.len()])
+        .map(|block| vec![BitVector::new(len); block.instructions.len()])
         .collect()
 }
 
@@ -63,16 +63,13 @@ fn value_interner(func: &Function) -> Interner<Value> {
         interner.intern(Value::Register(reg));
     }
 
-    for block in &func.basic_blocks {
-        for inst in &block.instructions {
-            for use_ in inst.uses() {
-                interner.intern(use_);
-            }
-            for def in inst.defs() {
-                interner.intern(def);
-            }
-        }
-    }
+    func.basic_blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .flat_map(|inst| inst.uses().into_iter().chain(inst.defs()))
+        .for_each(|var| {
+            interner.intern(var);
+        });
 
     interner
 }
@@ -81,26 +78,22 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
     let mut interner = value_interner(func);
     let num_gp_variables = interner.len();
     let num_blocks = func.basic_blocks.len();
-    let mut block_gen: Vec<BitVector> = vec![BitVector::with_len(num_gp_variables); num_blocks];
-    let mut block_kill: Vec<BitVector> = vec![BitVector::with_len(num_gp_variables); num_blocks];
+    let mut block_gen: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
+    let mut block_kill: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
 
     for (i, block) in func.basic_blocks.iter().enumerate() {
         for inst in &block.instructions {
             block_gen[i].set_from(inst.uses().into_iter().filter_map(|use_| {
                 let index = interner.intern(use_);
-                if !block_kill[i].test(index) {
-                    Some(index)
-                } else {
-                    None
-                }
+                (!block_kill[i].test(index)).then_some(index)
             }));
             block_kill[i].set_from(inst.defs().into_iter().map(|def| interner.intern(def)));
         }
     }
 
     let cfg = &func.cfg;
-    let mut block_in: Vec<BitVector> = vec![BitVector::with_len(num_gp_variables); num_blocks];
-    let mut block_out: Vec<BitVector> = vec![BitVector::with_len(num_gp_variables); num_blocks];
+    let mut block_in: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
+    let mut block_out: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
     let mut worklist = Worklist::new();
     worklist.extend(func.basic_blocks.iter().map(|block| &block.id));
 

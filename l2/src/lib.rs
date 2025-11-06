@@ -65,6 +65,8 @@ impl Register {
         Register::RBP,
         Register::RBX,
     ];
+
+    pub const NUM_GP_REGISTERS: usize = 15;
 }
 
 impl fmt::Display for Register {

@@ -40,7 +40,7 @@ struct ColoringAllocator<'a> {
     interference: &'a InterferenceGraph<'a>,
     degree: Vec<usize>,
     move_list: Vec<HashSet<(usize, usize)>>,
-    alias: Vec<Option<usize>>,
+    alias: Vec<usize>,
     color: Vec<Option<usize>>,
 
     precolored: Vec<usize>,
@@ -98,6 +98,8 @@ impl<'a> ColoringAllocator<'a> {
                 worklist_moves.insert((u, v));
             });
 
+        let alias: Vec<usize> = (0..num_gp_variables).collect();
+
         let precolored: Vec<usize> = Register::GP_REGISTERS
             .iter()
             .map(|&reg| {
@@ -119,7 +121,7 @@ impl<'a> ColoringAllocator<'a> {
             interference,
             degree,
             move_list,
-            alias: vec![None; num_gp_variables],
+            alias,
             color,
 
             precolored,
@@ -246,6 +248,12 @@ impl<'a> ColoringAllocator<'a> {
     fn select_spill(&mut self) {
         todo!()
     }
+}
+
+#[derive(Debug)]
+struct UnionFind {
+    parent: Vec<usize>,
+    rank: Vec<usize>,
 }
 
 fn simplify(interference: &InterferenceGraph) -> Vec<usize> {

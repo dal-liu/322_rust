@@ -22,8 +22,8 @@ impl DisplayResolved for LivenessResult {
         writeln!(f, "(\n(in")?;
 
         for vec in &self.in_ {
-            for bit in vec {
-                let mut line: Vec<String> = bit
+            for bv in vec {
+                let mut line: Vec<String> = bv
                     .iter()
                     .map(|val| self.interner.resolve(val).resolved(interner).to_string())
                     .collect();
@@ -35,8 +35,8 @@ impl DisplayResolved for LivenessResult {
         writeln!(f, ")\n\n(out")?;
 
         for vec in &self.out {
-            for bit in vec {
-                let mut line: Vec<String> = bit
+            for bv in vec {
+                let mut line: Vec<String> = bv
                     .iter()
                     .map(|val| self.interner.resolve(val).resolved(interner).to_string())
                     .collect();

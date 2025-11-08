@@ -70,14 +70,8 @@ impl BitVector {
     }
 
     pub fn set_from(&mut self, iter: impl Iterator<Item = usize>) {
-        for i in iter {
-            self.set(i);
-        }
-    }
-
-    pub fn reset_all(&mut self) {
-        for word in &mut self.vec {
-            *word = 0;
+        for index in iter {
+            self.set(index);
         }
     }
 
@@ -85,6 +79,28 @@ impl BitVector {
         self.vec
             .iter()
             .fold(0, |acc, word| acc + word.count_ones() as usize)
+    }
+
+    pub fn intersection(&mut self, other: &Self) {
+        assert_eq!(self.vec.len(), other.vec.len());
+        for (a, b) in self.vec.iter_mut().zip(&other.vec) {
+            *a &= *b;
+        }
+    }
+
+    pub fn reset_from(&mut self, iter: impl Iterator<Item = usize>) {
+        for index in iter {
+            self.reset(index);
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a BitVector {
+    type Item = usize;
+    type IntoIter = BitVectorIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 

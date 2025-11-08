@@ -1,8 +1,9 @@
+use crate::analysis::LivenessResult;
 use crate::bitvector::BitVector;
 use crate::regalloc::interference::InterferenceGraph;
 
 use l2::*;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::iter;
 
 #[derive(Debug)]
@@ -38,42 +39,33 @@ impl DisplayResolved for ColoringResult<'_> {
 #[derive(Debug)]
 struct ColoringAllocator<'a> {
     interference: &'a InterferenceGraph<'a>,
+    interner: Interner<(usize, usize)>,
     degree: Vec<usize>,
-    move_list: Vec<HashSet<(usize, usize)>>,
+    move_list: Vec<BitVector>,
     alias: Vec<usize>,
     color: Vec<Option<usize>>,
 
     precolored: Vec<usize>,
-    initial: BTreeSet<usize>,
-    simplify_worklist: BTreeSet<usize>,
-    freeze_worklist: HashSet<usize>,
-    spill_worklist: HashSet<usize>,
-    spill_nodes: HashSet<usize>,
-    coalesced_nodes: HashSet<usize>,
-    colored_nodes: HashSet<usize>,
+    initial: BitVector,
+    simplify_worklist: BitVector,
+    freeze_worklist: BitVector,
+    spill_worklist: BitVector,
+    spill_nodes: BitVector,
+    coalesced_nodes: BitVector,
+    colored_nodes: BitVector,
     select_stack: Vec<usize>,
 
-    coalesced_moves: HashSet<(usize, usize)>,
-    constrained_moves: HashSet<(usize, usize)>,
-    frozen_moves: HashSet<(usize, usize)>,
-    worklist_moves: HashSet<(usize, usize)>,
-    active_moves: HashSet<(usize, usize)>,
+    coalesced_moves: BitVector,
+    constrained_moves: BitVector,
+    frozen_moves: BitVector,
+    worklist_moves: BitVector,
+    active_moves: BitVector,
 }
 
 impl<'a> ColoringAllocator<'a> {
     pub fn new(func: &Function, interference: &'a InterferenceGraph) -> Self {
-        let num_gp_variables = interference.graph.len();
-
-        let degree: Vec<usize> = interference
-            .graph
-            .iter()
-            .map(|neighbors| neighbors.count())
-            .collect();
-
-        let mut move_list = vec![HashSet::new(); num_gp_variables];
-        let mut worklist_moves = HashSet::new();
-
-        func.basic_blocks
+        let moves: Vec<(usize, usize)> = func
+            .basic_blocks
             .iter()
             .flat_map(|block| &block.instructions)
             .filter_map(|inst| match inst {
@@ -88,17 +80,40 @@ impl<'a> ColoringAllocator<'a> {
                         .interner
                         .get(src)
                         .expect("registers and variables should be interned");
-                    Some((u, v))
+
+                    if matches!(dst, Value::Register(_)) && matches!(src, Value::Register(_)) {
+                        None
+                    } else if matches!(src, Value::Register(_)) {
+                        Some((v, u))
+                    } else {
+                        Some((u, v))
+                    }
                 }
                 _ => None,
             })
-            .for_each(|(u, v)| {
-                move_list[u].insert((u, v));
-                move_list[v].insert((u, v));
-                worklist_moves.insert((u, v));
-            });
+            .collect();
 
-        let alias: Vec<usize> = (0..num_gp_variables).collect();
+        let num_gp_variables = interference.interner.len();
+        let num_moves = moves.len();
+
+        let mut interner = Interner::new();
+        let mut move_list = vec![BitVector::new(num_moves); num_gp_variables];
+        let mut worklist_moves = BitVector::new(num_moves);
+
+        for (u, v) in moves {
+            let index = interner.intern((u, v));
+            move_list[u].set(index);
+            move_list[v].set(index);
+            worklist_moves.set(index);
+        }
+
+        let degree: Vec<usize> = interference
+            .graph
+            .iter()
+            .map(|neighbors| neighbors.count())
+            .collect();
+
+        let alias = (0..num_gp_variables).collect();
 
         let precolored: Vec<usize> = Register::GP_REGISTERS
             .iter()
@@ -114,11 +129,12 @@ impl<'a> ColoringAllocator<'a> {
             .map(|i| precolored.contains(&i).then_some(i))
             .collect();
 
-        let mut initial = BTreeSet::new();
-        initial.extend((0..num_gp_variables).filter(|node| !precolored.contains(node)));
+        let mut initial = BitVector::new(num_gp_variables);
+        initial.set_from((0..num_gp_variables).filter(|node| !precolored.contains(node)));
 
         Self {
             interference,
+            interner,
             degree,
             move_list,
             alias,
@@ -126,31 +142,35 @@ impl<'a> ColoringAllocator<'a> {
 
             precolored,
             initial,
-            simplify_worklist: BTreeSet::new(),
-            freeze_worklist: HashSet::new(),
-            spill_worklist: HashSet::new(),
-            spill_nodes: HashSet::new(),
-            coalesced_nodes: HashSet::new(),
-            colored_nodes: HashSet::new(),
+            simplify_worklist: BitVector::new(num_gp_variables),
+            freeze_worklist: BitVector::new(num_gp_variables),
+            spill_worklist: BitVector::new(num_gp_variables),
+            spill_nodes: BitVector::new(num_gp_variables),
+            coalesced_nodes: BitVector::new(num_gp_variables),
+            colored_nodes: BitVector::new(num_gp_variables),
             select_stack: Vec::new(),
 
-            coalesced_moves: HashSet::new(),
-            constrained_moves: HashSet::new(),
-            frozen_moves: HashSet::new(),
+            coalesced_moves: BitVector::new(num_moves),
+            constrained_moves: BitVector::new(num_moves),
+            frozen_moves: BitVector::new(num_moves),
             worklist_moves,
-            active_moves: HashSet::new(),
+            active_moves: BitVector::new(num_moves),
         }
     }
 
     pub fn finish(mut self) -> ColoringResult<'a> {
-        while !self.is_done() {
-            if !self.simplify_worklist.is_empty() {
+        while self.simplify_worklist.any()
+            && self.worklist_moves.any()
+            && self.freeze_worklist.any()
+            && self.spill_worklist.any()
+        {
+            if self.simplify_worklist.any() {
                 self.simplify();
-            } else if !self.worklist_moves.is_empty() {
+            } else if self.worklist_moves.any() {
                 self.coalesce();
-            } else if !self.freeze_worklist.is_empty() {
+            } else if self.freeze_worklist.any() {
                 self.freeze();
-            } else if !self.spill_worklist.is_empty() {
+            } else if self.spill_worklist.any() {
                 self.select_spill();
             }
         }
@@ -158,53 +178,45 @@ impl<'a> ColoringAllocator<'a> {
         todo!()
     }
 
-    fn is_done(&self) -> bool {
-        self.simplify_worklist.is_empty()
-            && self.worklist_moves.is_empty()
-            && self.freeze_worklist.is_empty()
-            && self.spill_worklist.is_empty()
+    fn adjacent(&self, node: usize) -> BitVector {
+        let mut select_bitvector = BitVector::new(self.interference.graph.len());
+        select_bitvector.set_from(self.select_stack.iter().copied());
+        select_bitvector.union(&self.coalesced_nodes);
+
+        let mut adjacent = self.interference.graph[node].clone();
+        adjacent.difference(&select_bitvector);
+        adjacent
     }
 
-    fn adjacent(&self, node: usize) -> Vec<usize> {
-        let select_set: HashSet<&usize> = self.select_stack.iter().collect();
-        self.interference.graph[node]
-            .iter()
-            .filter(|neighbor| {
-                !select_set.contains(neighbor) && self.coalesced_nodes.contains(neighbor)
-            })
-            .collect()
-    }
-
-    fn node_moves(&self, node: usize) -> Vec<(usize, usize)> {
-        let active_worklist: HashSet<&(usize, usize)> =
-            self.active_moves.union(&self.worklist_moves).collect();
-        self.move_list[node]
-            .iter()
-            .filter(|move_| active_worklist.contains(move_))
-            .copied()
-            .collect()
+    fn node_moves(&self, node: usize) -> BitVector {
+        let mut node_moves = self.active_moves.clone();
+        node_moves.union(&self.worklist_moves);
+        node_moves.intersection(&self.move_list[node]);
+        node_moves
     }
 
     fn is_move_related(&self, node: usize) -> bool {
-        !self.move_list[node].is_empty()
+        self.move_list[node].any()
     }
 
     fn make_worklist(&mut self) {
-        for &node in self.initial.iter() {
+        for node in &self.initial {
             if self.degree[node] >= Register::NUM_GP_REGISTERS {
-                self.spill_worklist.insert(node);
+                self.spill_worklist.set(node);
             } else if self.is_move_related(node) {
-                self.freeze_worklist.insert(node);
+                self.freeze_worklist.set(node);
             } else {
-                self.simplify_worklist.insert(node);
+                self.simplify_worklist.set(node);
             }
         }
     }
 
     fn simplify(&mut self) {
-        if let Some(node) = self.simplify_worklist.pop_first() {
+        if let Some(node) = self.simplify_worklist.iter().next() {
+            self.simplify_worklist.reset(node);
             self.select_stack.push(node);
-            for neighbor in self.adjacent(node) {
+
+            for neighbor in &self.adjacent(node) {
                 self.decrement_degree(neighbor);
             }
         }
@@ -215,30 +227,119 @@ impl<'a> ColoringAllocator<'a> {
         self.degree[node] -= 1;
 
         if degree == Register::NUM_GP_REGISTERS {
-            self.enable_moves(iter::once(node).chain(self.interference.graph[node].iter()));
-            self.spill_worklist.remove(&node);
+            self.enable_moves(iter::once(node).chain(&self.interference.graph[node]));
+            self.spill_worklist.reset(node);
 
             if self.is_move_related(node) {
-                self.freeze_worklist.insert(node);
+                self.freeze_worklist.set(node);
             } else {
-                self.simplify_worklist.insert(node);
+                self.simplify_worklist.set(node);
             }
         }
     }
 
     fn enable_moves(&mut self, iter: impl Iterator<Item = usize>) {
         for node in iter {
-            for move_ in self.node_moves(node) {
-                if self.active_moves.contains(&move_) {
-                    self.active_moves.remove(&move_);
-                    self.worklist_moves.insert(move_);
+            for move_ in &self.node_moves(node) {
+                if self.active_moves.test(move_) {
+                    self.active_moves.reset(move_);
+                    self.worklist_moves.set(move_);
                 }
             }
         }
     }
 
     fn coalesce(&mut self) {
-        todo!()
+        if let Some(move_) = self.worklist_moves.iter().next() {
+            let &(a, b) = self.interner.resolve(move_);
+            let x = self.get_alias(a);
+            let y = self.get_alias(b);
+
+            let (u, v) = if self.precolored.contains(&y) {
+                (y, x)
+            } else {
+                (x, y)
+            };
+
+            let index = self
+                .interner
+                .get(&(u, v))
+                .expect("moves should be interned");
+
+            if u == v {
+                self.coalesced_moves.set(index);
+                self.add_worklist(u);
+            } else if self.precolored.contains(&v) || self.interference.graph[u].test(v) {
+                self.constrained_moves.set(index);
+                self.add_worklist(u);
+                self.add_worklist(v);
+            } else if (self.precolored.contains(&u) && self.can_coalesce_george(u, v))
+                || (!self.precolored.contains(&u) && self.can_coalesce_briggs(u, v))
+            {
+                self.coalesced_moves.set(index);
+                self.combine(u, v);
+                self.add_worklist(u);
+            } else {
+                self.active_moves.set(index);
+            }
+        }
+    }
+
+    fn add_worklist(&mut self, node: usize) {
+        if !self.precolored.contains(&node)
+            && !self.is_move_related(node)
+            && self.degree[node] < Register::NUM_GP_REGISTERS
+        {
+            self.freeze_worklist.reset(node);
+            self.simplify_worklist.set(node);
+        }
+    }
+
+    fn can_coalesce_george(&self, u: usize, v: usize) -> bool {
+        self.adjacent(v).iter().all(|neighbor| {
+            self.degree[neighbor] < Register::NUM_GP_REGISTERS
+                || self.precolored.contains(&neighbor)
+                || self.interference.graph[u].test(neighbor)
+        })
+    }
+
+    fn can_coalesce_briggs(&self, u: usize, v: usize) -> bool {
+        let mut nodes = self.adjacent(u).clone();
+        nodes.union(&self.adjacent(v));
+
+        let mut k = 0;
+        for node in &nodes {
+            if self.degree[node] >= Register::NUM_GP_REGISTERS {
+                k += 1;
+            }
+        }
+        return k < Register::NUM_GP_REGISTERS;
+    }
+
+    fn get_alias(&self, node: usize) -> usize {
+        if self.coalesced_nodes.test(node) {
+            self.get_alias(self.alias[node])
+        } else {
+            node
+        }
+    }
+
+    fn combine(&mut self, u: usize, v: usize) {
+        if self.freeze_worklist.test(v) {
+            self.freeze_worklist.reset(v);
+        } else {
+            self.spill_worklist.reset(v);
+        }
+
+        self.coalesced_nodes.set(v);
+        self.alias[v] = u;
+
+        let (left, right) = self.move_list.split_at_mut(v);
+        left[u].union(&right[0]);
+
+        for neighbor in &self.adjacent(v) {
+            todo!()
+        }
     }
 
     fn freeze(&mut self) {
@@ -250,16 +351,10 @@ impl<'a> ColoringAllocator<'a> {
     }
 }
 
-#[derive(Debug)]
-struct UnionFind {
-    parent: Vec<usize>,
-    rank: Vec<usize>,
-}
-
 fn simplify(interference: &InterferenceGraph) -> Vec<usize> {
     let gp_registers: HashSet<usize> = gp_registers(&interference.interner);
     let num_gp_registers = gp_registers.len();
-    let num_gp_variables = interference.graph.len();
+    let num_gp_variables = interference.interner.len();
 
     let mut stack = Vec::new();
     let mut worklist = BitVector::new(num_gp_variables);
@@ -317,7 +412,7 @@ fn select<'a>(interference: &'a InterferenceGraph, mut stack: Vec<usize>) -> Col
             spilled.push(u);
         }
 
-        neighbor_colors.reset_all();
+        neighbor_colors.clear();
     }
 
     ColoringResult {

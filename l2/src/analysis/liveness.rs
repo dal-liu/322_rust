@@ -7,8 +7,8 @@ use l2::*;
 #[allow(dead_code)]
 pub struct LivenessResult {
     pub interner: Interner<Value>,
-    pub gen_: Vec<Vec<BitVector>>,
-    pub kill: Vec<Vec<BitVector>>,
+    pub block_in: Vec<BitVector>,
+    pub block_out: Vec<BitVector>,
     pub in_: Vec<Vec<BitVector>>,
     pub out: Vec<Vec<BitVector>>,
 }
@@ -115,8 +115,6 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
         }
     }
 
-    let mut gen_ = empty_dataflow_set(func, num_gp_variables);
-    let mut kill = empty_dataflow_set(func, num_gp_variables);
     let mut in_ = empty_dataflow_set(func, num_gp_variables);
     let mut out = empty_dataflow_set(func, num_gp_variables);
 
@@ -124,9 +122,6 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
         let i = block.id.0;
 
         for (j, inst) in block.instructions.iter().enumerate().rev() {
-            gen_[i][j].set_from(inst.uses().into_iter().map(|def| interner.intern(def)));
-            kill[i][j].set_from(inst.defs().into_iter().map(|def| interner.intern(def)));
-
             out[i][j] = if j == block.instructions.len() - 1 {
                 block_out[i].clone()
             } else {
@@ -134,15 +129,15 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
             };
 
             in_[i][j] = out[i][j].clone();
-            in_[i][j].difference(&kill[i][j]);
-            in_[i][j].union(&gen_[i][j]);
+            in_[i][j].reset_from(inst.defs().into_iter().map(|def| interner.intern(def)));
+            in_[i][j].set_from(inst.uses().into_iter().map(|def| interner.intern(def)));
         }
     }
 
     LivenessResult {
         interner,
-        gen_,
-        kill,
+        block_in,
+        block_out,
         in_,
         out,
     }

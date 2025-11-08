@@ -37,47 +37,45 @@ impl<'a> InterferenceGraph<'a> {
         }
 
         for block in &func.basic_blocks {
-            let i = block.id.0;
+            let mut live = liveness.block_out[block.id.0].clone();
 
-            for (j, inst) in block.instructions.iter().enumerate() {
-                let in_ = &liveness.in_[i][j];
-                for u in in_.iter() {
-                    for v in in_.iter() {
-                        if u < v {
-                            graph.add_edge(u, v);
-                        }
-                    }
-                }
+            for inst in block.instructions.iter().rev() {
+                let defs: Vec<usize> = inst
+                    .defs()
+                    .iter()
+                    .map(|def| liveness.interner.get(def).expect("defs should be interned"))
+                    .collect();
 
-                let out = &liveness.out[i][j];
-                for u in out.iter() {
-                    for v in out.iter() {
-                        if u < v {
-                            graph.add_edge(u, v);
-                        }
-                    }
-                }
+                live.set_from(defs.iter().copied());
 
-                let kill = &liveness.kill[i][j];
-                for u in kill.iter() {
-                    for v in out.iter() {
+                for &u in &defs {
+                    for v in &live {
                         if u != v {
                             graph.add_edge(u, v);
                         }
                     }
                 }
 
-                if let Instruction::Shift { src, .. } = inst {
-                    if matches!(src, Value::Variable(_)) {
+                live.reset_from(defs.iter().copied());
+
+                live.set_from(inst.uses().iter().map(|use_| {
+                    liveness
+                        .interner
+                        .get(use_)
+                        .expect("uses should be interned")
+                }));
+
+                match inst {
+                    Instruction::Shift { src, .. } if matches!(src, Value::Variable(_)) => {
                         let rcx = graph
                             .interner
                             .get(&Value::Register(Register::RCX))
-                            .unwrap_or_else(|| panic!("rcx not interned"));
+                            .expect("rcx not interned");
 
                         let u = graph
                             .interner
                             .get(src)
-                            .unwrap_or_else(|| panic!("{:?} not interned", src));
+                            .expect("variables should be interned");
 
                         for &v in &gp_registers {
                             if v != rcx {
@@ -85,8 +83,70 @@ impl<'a> InterferenceGraph<'a> {
                             }
                         }
                     }
+                    _ => (),
                 }
             }
+
+            // let i = block.id.0;
+            //
+            // for (j, inst) in block.instructions.iter().enumerate() {
+            //     let in_ = &liveness.in_[i][j];
+            //     for u in in_ {
+            //         for v in in_ {
+            //             if u < v {
+            //                 graph.add_edge(u, v);
+            //             }
+            //         }
+            //     }
+            //
+            //     let out = &liveness.out[i][j];
+            //     for u in out {
+            //         for v in out {
+            //             if u < v {
+            //                 graph.add_edge(u, v);
+            //             }
+            //         }
+            //     }
+            //
+            //     let kill: Vec<usize> = inst
+            //         .uses()
+            //         .iter()
+            //         .map(|use_| {
+            //             liveness
+            //                 .interner
+            //                 .get(use_)
+            //                 .expect("uses should be interned")
+            //         })
+            //         .collect();
+            //
+            //     for u in kill {
+            //         for v in out {
+            //             if u != v {
+            //                 graph.add_edge(u, v);
+            //             }
+            //         }
+            //     }
+            //
+            //     if let Instruction::Shift { src, .. } = inst {
+            //         if matches!(src, Value::Variable(_)) {
+            //             let rcx = graph
+            //                 .interner
+            //                 .get(&Value::Register(Register::RCX))
+            //                 .expect("rcx not interned");
+            //
+            //             let u = graph
+            //                 .interner
+            //                 .get(src)
+            //                 .expect("variables should be interned");
+            //
+            //             for &v in &gp_registers {
+            //                 if v != rcx {
+            //                     graph.add_edge(u, v);
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
         }
 
         graph

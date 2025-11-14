@@ -13,7 +13,7 @@ pub struct ColoringResult<'a> {
 }
 
 #[derive(Debug)]
-struct Allocator<'a, 'b> {
+struct ColoringAllocator<'a, 'b> {
     interner: Interner<Instruction>,
     interference: &'a mut InterferenceGraph<'a>,
     prev_spilled: &'b mut HashSet<Value>,
@@ -38,7 +38,7 @@ struct Allocator<'a, 'b> {
     color: HashMap<usize, usize>,
 }
 
-impl<'a, 'b> Allocator<'a, 'b> {
+impl<'a, 'b> ColoringAllocator<'a, 'b> {
     pub fn new(
         func: &Function,
         interference: &'a mut InterferenceGraph<'a>,
@@ -89,8 +89,8 @@ impl<'a, 'b> Allocator<'a, 'b> {
         let alias = (0..num_nodes).collect();
 
         let color = (0..num_nodes)
-            .filter_map(|node| precolored.contains(&node).then_some(node))
-            .map(|node| (node, node))
+            .filter_map(|n| precolored.contains(&n).then_some(n))
+            .map(|n| (n, n))
             .collect();
 
         let mut allocator = Self {
@@ -131,7 +131,7 @@ impl<'a, 'b> Allocator<'a, 'b> {
         allocator
     }
 
-    pub fn allocate(mut self) -> ColoringResult<'a> {
+    pub fn allocate(&mut self) {
         while self.simplify_worklist.any()
             || self.worklist_moves.any()
             || self.freeze_worklist.any()
@@ -147,8 +147,31 @@ impl<'a, 'b> Allocator<'a, 'b> {
                 self.select_spill();
             }
         }
+    }
 
-        self.assign_colors();
+    pub fn assign_colors(mut self) -> ColoringResult<'a> {
+        while let Some(u) = self.select_stack.pop() {
+            let mut ok_colors = self.precolored.clone();
+            let mut colored = self.colored_nodes.clone();
+            colored.set_from(self.precolored.iter().copied());
+
+            for v in &self.interference.graph[u] {
+                if colored.test(self.get_alias(v)) {
+                    ok_colors.retain(|&color| color != self.color[&self.get_alias(v)]);
+                }
+            }
+
+            if ok_colors.is_empty() {
+                self.spill_nodes.insert(u);
+            } else {
+                self.colored_nodes.set(u);
+                self.color.insert(u, ok_colors[0]);
+            }
+        }
+
+        for node in &self.coalesced_nodes {
+            self.color.insert(node, self.color[&self.get_alias(node)]);
+        }
 
         ColoringResult {
             interner: self.interference.interner,
@@ -270,10 +293,10 @@ impl<'a, 'b> Allocator<'a, 'b> {
     }
 
     fn can_coalesce_george(&self, u: usize, v: usize) -> bool {
-        self.adjacent(v).iter().all(|&neighbor| {
-            self.interference.degree(neighbor) < Register::NUM_GP_REGISTERS
-                || self.precolored.contains(&neighbor)
-                || self.interference.has_edge(u, neighbor)
+        self.adjacent(v).iter().all(|&n| {
+            self.interference.degree(n) < Register::NUM_GP_REGISTERS
+                || self.precolored.contains(&n)
+                || self.interference.has_edge(u, n)
         })
     }
 
@@ -375,31 +398,6 @@ impl<'a, 'b> Allocator<'a, 'b> {
             self.freeze_moves(node);
         }
     }
-
-    fn assign_colors(&mut self) {
-        while let Some(u) = self.select_stack.pop() {
-            let mut ok_colors = self.precolored.clone();
-            let mut colored = self.colored_nodes.clone();
-            colored.set_from(self.precolored.iter().copied());
-
-            for v in &self.interference.graph[u] {
-                if colored.test(self.get_alias(v)) {
-                    ok_colors.retain(|&color| color != self.color[&self.get_alias(v)]);
-                }
-            }
-
-            if ok_colors.is_empty() {
-                self.spill_nodes.insert(u);
-            } else {
-                self.colored_nodes.set(u);
-                self.color.insert(u, ok_colors[0]);
-            }
-        }
-
-        for node in &self.coalesced_nodes {
-            self.color.insert(node, self.color[&self.get_alias(node)]);
-        }
-    }
 }
 
 pub fn color_graph<'a, 'b>(
@@ -407,6 +405,7 @@ pub fn color_graph<'a, 'b>(
     interference: &'a mut InterferenceGraph<'a>,
     prev_spilled: &'b mut HashSet<Value>,
 ) -> ColoringResult<'a> {
-    let allocator = Allocator::new(func, interference, prev_spilled);
-    allocator.allocate()
+    let mut allocator = ColoringAllocator::new(func, interference, prev_spilled);
+    allocator.allocate();
+    allocator.assign_colors()
 }

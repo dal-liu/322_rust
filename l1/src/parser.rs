@@ -5,6 +5,31 @@ use std::fs;
 
 type MyExtra<'src> = extra::Err<Rich<'src, char>>;
 
+pub fn parse_file(file_name: &str) -> Option<Program> {
+    let file_name = file_name.to_string();
+    let input = fs::read_to_string(&file_name).unwrap_or_else(|e| panic!("{}", e));
+    let (output, errors) = program().parse(&input).into_output_errors();
+
+    errors.into_iter().for_each(|err| {
+        Report::build(
+            ReportKind::Error,
+            (file_name.clone(), err.span().into_range()),
+        )
+        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+        .with_message(err.to_string())
+        .with_label(
+            Label::new((file_name.clone(), err.span().into_range()))
+                .with_message(err.reason().to_string())
+                .with_color(Color::Red),
+        )
+        .finish()
+        .eprint(sources([(file_name.clone(), input.clone())]))
+        .unwrap();
+    });
+
+    output
+}
+
 fn separators<'src>() -> impl Parser<'src, &'src str, (), MyExtra<'src>> + Copy {
     one_of(" \t").repeated()
 }
@@ -360,29 +385,4 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program, MyExtra<'src>> {
             entry_point: entry_point.to_string(),
             functions,
         })
-}
-
-pub fn parse_file(file_name: &str) -> Option<Program> {
-    let file_name = file_name.to_string();
-    let input = fs::read_to_string(&file_name).unwrap_or_else(|e| panic!("{}", e));
-    let (output, errors) = program().parse(&input).into_output_errors();
-
-    errors.into_iter().for_each(|err| {
-        Report::build(
-            ReportKind::Error,
-            (file_name.clone(), err.span().into_range()),
-        )
-        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-        .with_message(err.to_string())
-        .with_label(
-            Label::new((file_name.clone(), err.span().into_range()))
-                .with_message(err.reason().to_string())
-                .with_color(Color::Red),
-        )
-        .finish()
-        .eprint(sources([(file_name.clone(), input.clone())]))
-        .unwrap();
-    });
-
-    output
 }

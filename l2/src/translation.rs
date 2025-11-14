@@ -1,6 +1,18 @@
 use l1;
 use l2::*;
 
+pub fn translate_program(prog: &Program) -> l1::Program {
+    let functions: Vec<l1::Function> = prog
+        .functions
+        .iter()
+        .map(|func| translate_function(func, &prog.interner))
+        .collect();
+    l1::Program {
+        entry_point: prog.entry_point.clone(),
+        functions,
+    }
+}
+
 fn translate_register(reg: &Value) -> l1::Register {
     use Register::*;
     use l1::Register as L1;
@@ -202,17 +214,5 @@ fn translate_function(func: &Function, interner: &Interner<String>) -> l1::Funct
         args: func.args,
         locals: func.locals,
         instructions,
-    }
-}
-
-pub fn translate_program(prog: &Program) -> l1::Program {
-    let functions: Vec<l1::Function> = prog
-        .functions
-        .iter()
-        .map(|func| translate_function(func, &prog.interner))
-        .collect();
-    l1::Program {
-        entry_point: prog.entry_point.clone(),
-        functions,
     }
 }

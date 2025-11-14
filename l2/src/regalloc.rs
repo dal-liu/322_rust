@@ -11,23 +11,6 @@ use std::collections::HashSet;
 
 pub use crate::regalloc::interference::build_interference;
 
-fn rewrite_program(func: &mut Function, coloring: &ColoringResult) {
-    func.basic_blocks
-        .iter_mut()
-        .flat_map(|block| &mut block.instructions)
-        .for_each(|inst| {
-            inst.defs()
-                .into_iter()
-                .chain(inst.uses())
-                .filter(|val| matches!(val, Value::Variable(_)))
-                .for_each(|var| {
-                    let index = coloring.interner.get(&var).unwrap();
-                    let color = coloring.color[&index];
-                    inst.replace_value(&var, coloring.interner.resolve(color));
-                })
-        });
-}
-
 pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) {
     let prefix = "S";
     let mut suffix = 0;
@@ -49,4 +32,21 @@ pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) 
             all_spilled.extend(spilled.into_iter());
         }
     }
+}
+
+fn rewrite_program(func: &mut Function, coloring: &ColoringResult) {
+    func.basic_blocks
+        .iter_mut()
+        .flat_map(|block| &mut block.instructions)
+        .for_each(|inst| {
+            inst.defs()
+                .into_iter()
+                .chain(inst.uses())
+                .filter(|val| matches!(val, Value::Variable(_)))
+                .for_each(|var| {
+                    let index = coloring.interner.get(&var).unwrap();
+                    let color = coloring.color[&index];
+                    inst.replace_value(&var, coloring.interner.resolve(color));
+                })
+        });
 }

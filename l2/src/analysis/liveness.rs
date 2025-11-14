@@ -11,24 +11,6 @@ pub struct LivenessResult {
     pub out: Vec<BitVector>,
 }
 
-fn value_interner(func: &Function) -> Interner<Value> {
-    let mut interner = Interner::new();
-
-    for &reg in Register::GP_REGISTERS {
-        interner.intern(Value::Register(reg));
-    }
-
-    func.basic_blocks
-        .iter()
-        .flat_map(|block| &block.instructions)
-        .flat_map(|inst| inst.uses().into_iter().chain(inst.defs()))
-        .for_each(|var| {
-            interner.intern(var);
-        });
-
-    interner
-}
-
 pub fn compute_liveness(func: &Function) -> LivenessResult {
     let mut interner = value_interner(func);
     let num_gp_variables = interner.len();
@@ -71,4 +53,22 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
     }
 
     LivenessResult { interner, in_, out }
+}
+
+fn value_interner(func: &Function) -> Interner<Value> {
+    let mut interner = Interner::new();
+
+    for &reg in Register::GP_REGISTERS {
+        interner.intern(Value::Register(reg));
+    }
+
+    func.basic_blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .flat_map(|inst| inst.uses().into_iter().chain(inst.defs()))
+        .for_each(|var| {
+            interner.intern(var);
+        });
+
+    interner
 }

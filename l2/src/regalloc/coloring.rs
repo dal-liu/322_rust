@@ -1,4 +1,3 @@
-use crate::analysis::LivenessResult;
 use crate::bitvector::BitVector;
 use crate::regalloc::interference::InterferenceGraph;
 
@@ -9,48 +8,21 @@ use std::iter;
 #[derive(Debug)]
 pub struct ColoringResult<'a> {
     pub interner: &'a Interner<Value>,
-    pub mapping: HashMap<usize, usize>,
-    pub spilled: Vec<usize>,
-}
-
-impl DisplayResolved for ColoringResult<'_> {
-    fn fmt_with(
-        &self,
-        f: &mut std::fmt::Formatter,
-        interner: &Interner<String>,
-    ) -> std::fmt::Result {
-        for (&var, &reg) in &self.mapping {
-            writeln!(
-                f,
-                "{} {}",
-                self.interner.resolve(var).resolved(interner),
-                self.interner.resolve(reg).resolved(interner)
-            )?;
-        }
-
-        for &var in &self.spilled {
-            writeln!(f, "{}", self.interner.resolve(var).resolved(interner))?;
-        }
-
-        Ok(())
-    }
+    pub color: HashMap<usize, usize>,
+    pub spill_nodes: HashSet<usize>,
 }
 
 #[derive(Debug)]
-struct ColoringAllocator<'a> {
-    interference: &'a InterferenceGraph<'a>,
-    interner: Interner<(usize, usize)>,
-    degree: Vec<usize>,
-    move_list: Vec<BitVector>,
-    alias: Vec<usize>,
-    color: Vec<Option<usize>>,
+struct Allocator<'a, 'b> {
+    interner: Interner<Instruction>,
+    interference: &'a mut InterferenceGraph<'a>,
+    prev_spilled: &'b mut HashSet<Value>,
 
     precolored: Vec<usize>,
-    initial: BitVector,
     simplify_worklist: BitVector,
     freeze_worklist: BitVector,
     spill_worklist: BitVector,
-    spill_nodes: BitVector,
+    spill_nodes: HashSet<usize>,
     coalesced_nodes: BitVector,
     colored_nodes: BitVector,
     select_stack: Vec<usize>,
@@ -60,94 +32,79 @@ struct ColoringAllocator<'a> {
     frozen_moves: BitVector,
     worklist_moves: BitVector,
     active_moves: BitVector,
+
+    move_list: Vec<BitVector>,
+    alias: Vec<usize>,
+    color: HashMap<usize, usize>,
 }
 
-impl<'a> ColoringAllocator<'a> {
-    pub fn new(func: &Function, interference: &'a InterferenceGraph) -> Self {
-        let moves: Vec<(usize, usize)> = func
-            .basic_blocks
+impl<'a, 'b> Allocator<'a, 'b> {
+    pub fn new(
+        func: &Function,
+        interference: &'a mut InterferenceGraph<'a>,
+        prev_spilled: &'b mut HashSet<Value>,
+    ) -> Self {
+        let num_nodes = interference.interner.len();
+        let mut interner = Interner::new();
+
+        func.basic_blocks
             .iter()
             .flat_map(|block| &block.instructions)
-            .filter_map(|inst| match inst {
+            .for_each(|inst| match inst {
                 Instruction::Assign { dst, src }
                     if dst.is_gp_variable() && src.is_gp_variable() =>
                 {
-                    let u = interference
-                        .interner
-                        .get(dst)
-                        .expect("registers and variables should be interned");
-                    let v = interference
-                        .interner
-                        .get(src)
-                        .expect("registers and variables should be interned");
-
-                    if matches!(dst, Value::Register(_)) && matches!(src, Value::Register(_)) {
-                        None
-                    } else if matches!(src, Value::Register(_)) {
-                        Some((v, u))
-                    } else {
-                        Some((u, v))
-                    }
+                    interner.intern(inst.clone());
                 }
-                _ => None,
-            })
-            .collect();
-
-        let num_gp_variables = interference.interner.len();
-        let num_moves = moves.len();
-
-        let mut interner = Interner::new();
-        let mut move_list = vec![BitVector::new(num_moves); num_gp_variables];
-        let mut worklist_moves = BitVector::new(num_moves);
-
-        for (u, v) in moves {
-            let index = interner.intern((u, v));
-            move_list[u].set(index);
-            move_list[v].set(index);
-            worklist_moves.set(index);
-        }
-
-        let degree: Vec<usize> = interference
-            .graph
-            .iter()
-            .map(|neighbors| neighbors.count())
-            .collect();
-
-        let alias = (0..num_gp_variables).collect();
+                _ => (),
+            });
 
         let precolored: Vec<usize> = Register::GP_REGISTERS
             .iter()
-            .map(|&reg| {
-                interference
-                    .interner
-                    .get(&Value::Register(reg))
-                    .expect("registers should be interned")
-            })
+            .map(|&reg| interference.interner[&Value::Register(reg)])
             .collect();
 
-        let color = (0..num_gp_variables)
-            .map(|i| precolored.contains(&i).then_some(i))
+        let num_moves = interner.len();
+        let mut worklist_moves = BitVector::new(num_moves);
+        let mut move_list = vec![BitVector::new(num_moves); num_nodes];
+
+        func.basic_blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .for_each(|inst| match inst {
+                Instruction::Assign { dst, src }
+                    if dst.is_gp_variable() && src.is_gp_variable() =>
+                {
+                    let move_ = interner[inst];
+                    worklist_moves.set(move_);
+
+                    for var in [dst, src] {
+                        let node = interference.interner[var];
+                        move_list[node].set(move_);
+                    }
+                }
+                _ => (),
+            });
+
+        let alias = (0..num_nodes).collect();
+
+        let color = (0..num_nodes)
+            .filter_map(|node| precolored.contains(&node).then_some(node))
+            .map(|node| (node, node))
             .collect();
 
-        let mut initial = BitVector::new(num_gp_variables);
-        initial.set_from((0..num_gp_variables).filter(|node| !precolored.contains(node)));
-
-        Self {
-            interference,
+        let mut allocator = Self {
             interner,
-            degree,
-            move_list,
-            alias,
-            color,
+            interference,
+            prev_spilled,
 
             precolored,
-            initial,
-            simplify_worklist: BitVector::new(num_gp_variables),
-            freeze_worklist: BitVector::new(num_gp_variables),
-            spill_worklist: BitVector::new(num_gp_variables),
-            spill_nodes: BitVector::new(num_gp_variables),
-            coalesced_nodes: BitVector::new(num_gp_variables),
-            colored_nodes: BitVector::new(num_gp_variables),
+            simplify_worklist: BitVector::new(num_nodes),
+            freeze_worklist: BitVector::new(num_nodes),
+            spill_worklist: BitVector::new(num_nodes),
+            spill_nodes: HashSet::new(),
+            coalesced_nodes: BitVector::new(num_nodes),
+            colored_nodes: BitVector::new(num_nodes),
             select_stack: Vec::new(),
 
             coalesced_moves: BitVector::new(num_moves),
@@ -155,14 +112,30 @@ impl<'a> ColoringAllocator<'a> {
             frozen_moves: BitVector::new(num_moves),
             worklist_moves,
             active_moves: BitVector::new(num_moves),
+
+            move_list,
+            alias,
+            color,
+        };
+
+        for node in (0..num_nodes).filter(|n| !allocator.precolored.contains(n)) {
+            if allocator.interference.degree(node) >= Register::NUM_GP_REGISTERS {
+                allocator.spill_worklist.set(node);
+            } else if allocator.is_move_related(node) {
+                allocator.freeze_worklist.set(node);
+            } else {
+                allocator.simplify_worklist.set(node);
+            }
         }
+
+        allocator
     }
 
-    pub fn finish(mut self) -> ColoringResult<'a> {
+    pub fn allocate(mut self) -> ColoringResult<'a> {
         while self.simplify_worklist.any()
-            && self.worklist_moves.any()
-            && self.freeze_worklist.any()
-            && self.spill_worklist.any()
+            || self.worklist_moves.any()
+            || self.freeze_worklist.any()
+            || self.spill_worklist.any()
         {
             if self.simplify_worklist.any() {
                 self.simplify();
@@ -175,40 +148,40 @@ impl<'a> ColoringAllocator<'a> {
             }
         }
 
-        todo!()
+        self.assign_colors();
+
+        ColoringResult {
+            interner: self.interference.interner,
+            color: self.color,
+            spill_nodes: self.spill_nodes,
+        }
     }
 
-    fn adjacent(&self, node: usize) -> BitVector {
-        let mut select_bitvector = BitVector::new(self.interference.graph.len());
-        select_bitvector.set_from(self.select_stack.iter().copied());
-        select_bitvector.union(&self.coalesced_nodes);
+    fn add_edge(&mut self, u: usize, v: usize) {
+        if !self.interference.has_edge(u, v) && u != v {
+            self.interference.add_edge(u, v);
+        }
+    }
+
+    fn adjacent(&self, node: usize) -> Vec<usize> {
+        let mut select = BitVector::new(self.interference.graph.len());
+        select.set_from(self.select_stack.iter().copied());
+        select.union(&self.coalesced_nodes);
 
         let mut adjacent = self.interference.graph[node].clone();
-        adjacent.difference(&select_bitvector);
-        adjacent
+        adjacent.difference(&select);
+        adjacent.iter().collect()
     }
 
-    fn node_moves(&self, node: usize) -> BitVector {
+    fn node_moves(&self, node: usize) -> Vec<usize> {
         let mut node_moves = self.active_moves.clone();
         node_moves.union(&self.worklist_moves);
         node_moves.intersection(&self.move_list[node]);
-        node_moves
+        node_moves.iter().collect()
     }
 
     fn is_move_related(&self, node: usize) -> bool {
         self.move_list[node].any()
-    }
-
-    fn make_worklist(&mut self) {
-        for node in &self.initial {
-            if self.degree[node] >= Register::NUM_GP_REGISTERS {
-                self.spill_worklist.set(node);
-            } else if self.is_move_related(node) {
-                self.freeze_worklist.set(node);
-            } else {
-                self.simplify_worklist.set(node);
-            }
-        }
     }
 
     fn simplify(&mut self) {
@@ -216,18 +189,19 @@ impl<'a> ColoringAllocator<'a> {
             self.simplify_worklist.reset(node);
             self.select_stack.push(node);
 
-            for neighbor in &self.adjacent(node) {
+            for neighbor in self.adjacent(node) {
                 self.decrement_degree(neighbor);
             }
         }
     }
 
     fn decrement_degree(&mut self, node: usize) {
-        let degree = self.degree[node];
-        self.degree[node] -= 1;
-
-        if degree == Register::NUM_GP_REGISTERS {
-            self.enable_moves(iter::once(node).chain(&self.interference.graph[node]));
+        if self.interference.degree(node) == Register::NUM_GP_REGISTERS {
+            self.enable_moves(
+                iter::once(node)
+                    .chain(&self.interference.graph[node])
+                    .collect(),
+            );
             self.spill_worklist.reset(node);
 
             if self.is_move_related(node) {
@@ -238,9 +212,9 @@ impl<'a> ColoringAllocator<'a> {
         }
     }
 
-    fn enable_moves(&mut self, iter: impl Iterator<Item = usize>) {
-        for node in iter {
-            for move_ in &self.node_moves(node) {
+    fn enable_moves(&mut self, nodes: Vec<usize>) {
+        for node in nodes {
+            for move_ in self.node_moves(node) {
                 if self.active_moves.test(move_) {
                     self.active_moves.reset(move_);
                     self.worklist_moves.set(move_);
@@ -251,36 +225,36 @@ impl<'a> ColoringAllocator<'a> {
 
     fn coalesce(&mut self) {
         if let Some(move_) = self.worklist_moves.iter().next() {
-            let &(a, b) = self.interner.resolve(move_);
-            let x = self.get_alias(a);
-            let y = self.get_alias(b);
+            let interner = self.interference.interner;
 
-            let (u, v) = if self.precolored.contains(&y) {
-                (y, x)
-            } else {
-                (x, y)
-            };
+            if let Instruction::Assign { dst, src } = self.interner.resolve(move_) {
+                let x = self.get_alias(interner[dst]);
+                let y = self.get_alias(interner[src]);
 
-            let index = self
-                .interner
-                .get(&(u, v))
-                .expect("moves should be interned");
+                let (u, v) = if self.precolored.contains(&y) {
+                    (y, x)
+                } else {
+                    (x, y)
+                };
 
-            if u == v {
-                self.coalesced_moves.set(index);
-                self.add_worklist(u);
-            } else if self.precolored.contains(&v) || self.interference.graph[u].test(v) {
-                self.constrained_moves.set(index);
-                self.add_worklist(u);
-                self.add_worklist(v);
-            } else if (self.precolored.contains(&u) && self.can_coalesce_george(u, v))
-                || (!self.precolored.contains(&u) && self.can_coalesce_briggs(u, v))
-            {
-                self.coalesced_moves.set(index);
-                self.combine(u, v);
-                self.add_worklist(u);
-            } else {
-                self.active_moves.set(index);
+                self.worklist_moves.reset(move_);
+
+                if u == v {
+                    self.coalesced_moves.set(move_);
+                    self.add_worklist(u);
+                } else if self.precolored.contains(&v) || self.interference.has_edge(u, v) {
+                    self.constrained_moves.set(move_);
+                    self.add_worklist(u);
+                    self.add_worklist(v);
+                } else if (self.precolored.contains(&u) && self.can_coalesce_george(u, v))
+                    || (!self.precolored.contains(&u) && self.can_coalesce_briggs(u, v))
+                {
+                    self.coalesced_moves.set(move_);
+                    self.combine(u, v);
+                    self.add_worklist(u);
+                } else {
+                    self.active_moves.set(move_);
+                }
             }
         }
     }
@@ -288,7 +262,7 @@ impl<'a> ColoringAllocator<'a> {
     fn add_worklist(&mut self, node: usize) {
         if !self.precolored.contains(&node)
             && !self.is_move_related(node)
-            && self.degree[node] < Register::NUM_GP_REGISTERS
+            && self.interference.degree(node) < Register::NUM_GP_REGISTERS
         {
             self.freeze_worklist.reset(node);
             self.simplify_worklist.set(node);
@@ -296,20 +270,21 @@ impl<'a> ColoringAllocator<'a> {
     }
 
     fn can_coalesce_george(&self, u: usize, v: usize) -> bool {
-        self.adjacent(v).iter().all(|neighbor| {
-            self.degree[neighbor] < Register::NUM_GP_REGISTERS
+        self.adjacent(v).iter().all(|&neighbor| {
+            self.interference.degree(neighbor) < Register::NUM_GP_REGISTERS
                 || self.precolored.contains(&neighbor)
-                || self.interference.graph[u].test(neighbor)
+                || self.interference.has_edge(u, neighbor)
         })
     }
 
     fn can_coalesce_briggs(&self, u: usize, v: usize) -> bool {
-        let mut nodes = self.adjacent(u).clone();
-        nodes.union(&self.adjacent(v));
+        let mut nodes = BitVector::new(self.interference.interner.len());
+        nodes.set_from(self.adjacent(u).into_iter());
+        nodes.set_from(self.adjacent(v).into_iter());
 
         let mut k = 0;
         for node in &nodes {
-            if self.degree[node] >= Register::NUM_GP_REGISTERS {
+            if self.interference.degree(node) >= Register::NUM_GP_REGISTERS {
                 k += 1;
             }
         }
@@ -334,105 +309,104 @@ impl<'a> ColoringAllocator<'a> {
         self.coalesced_nodes.set(v);
         self.alias[v] = u;
 
-        let (left, right) = self.move_list.split_at_mut(v);
-        left[u].union(&right[0]);
+        let move_list = self.move_list[v].clone();
+        self.move_list[u].union(&move_list);
 
-        for neighbor in &self.adjacent(v) {
-            todo!()
+        for neighbor in self.adjacent(v) {
+            self.add_edge(neighbor, u);
+            self.decrement_degree(neighbor);
+        }
+
+        if self.interference.degree(u) >= Register::NUM_GP_REGISTERS && self.freeze_worklist.test(u)
+        {
+            self.freeze_worklist.reset(u);
+            self.spill_worklist.set(u);
         }
     }
 
     fn freeze(&mut self) {
-        todo!()
+        if let Some(node) = self.freeze_worklist.iter().next() {
+            self.freeze_worklist.reset(node);
+            self.simplify_worklist.set(node);
+            self.freeze_moves(node);
+        }
+    }
+
+    fn freeze_moves(&mut self, u: usize) {
+        let interner = self.interference.interner;
+
+        for move_ in self.node_moves(u) {
+            if self.active_moves.test(move_) {
+                self.active_moves.reset(move_);
+            } else {
+                self.worklist_moves.reset(move_);
+            }
+
+            self.frozen_moves.set(move_);
+
+            let v = match self.interner.resolve(move_) {
+                Instruction::Assign { dst, src } => {
+                    interner[if interner[dst] == u { src } else { dst }]
+                }
+                _ => panic!("not a move"),
+            };
+
+            if self.node_moves(v).is_empty()
+                && self.interference.degree(v) < Register::NUM_GP_REGISTERS
+            {
+                self.freeze_worklist.reset(v);
+                self.simplify_worklist.set(v);
+            }
+        }
     }
 
     fn select_spill(&mut self) {
-        todo!()
-    }
-}
-
-fn simplify(interference: &InterferenceGraph) -> Vec<usize> {
-    let gp_registers: HashSet<usize> = gp_registers(&interference.interner);
-    let num_gp_registers = gp_registers.len();
-    let num_gp_variables = interference.interner.len();
-
-    let mut stack = Vec::new();
-    let mut worklist = BitVector::new(num_gp_variables);
-    worklist.set_from((0..num_gp_variables).filter(|i| !gp_registers.contains(i)));
-
-    while worklist.any() {
-        let remaining_degrees: Vec<(usize, usize)> = worklist
-            .iter()
-            .map(|u| {
-                let degree = interference.graph[u]
-                    .iter()
-                    .filter(|&v| worklist.test(v) || gp_registers.contains(&v))
-                    .count();
-                (u, degree)
-            })
-            .collect();
-
-        let removed_node = remaining_degrees
-            .iter()
-            .filter(|&&(_, k)| k < num_gp_registers)
-            .max_by_key(|&&(_, k)| k)
-            .or_else(|| remaining_degrees.iter().max_by_key(|&&(_, k)| k))
-            .map(|&(node, _)| node)
-            .expect("graph should not be empty");
-
-        worklist.reset(removed_node);
-        stack.push(removed_node);
+        if let Some(node) = self.spill_worklist.iter().find(|&n| {
+            !self
+                .prev_spilled
+                .contains(self.interference.interner.resolve(n))
+        }) {
+            self.spill_worklist.reset(node);
+            self.simplify_worklist.set(node);
+            self.freeze_moves(node);
+        } else if let Some(node) = self.spill_worklist.iter().next() {
+            self.spill_worklist.reset(node);
+            self.simplify_worklist.set(node);
+            self.freeze_moves(node);
+        }
     }
 
-    stack
-}
+    fn assign_colors(&mut self) {
+        while let Some(u) = self.select_stack.pop() {
+            let mut ok_colors = self.precolored.clone();
+            let mut colored = self.colored_nodes.clone();
+            colored.set_from(self.precolored.iter().copied());
 
-fn select<'a>(interference: &'a InterferenceGraph, mut stack: Vec<usize>) -> ColoringResult<'a> {
-    let gp_registers: Vec<usize> = gp_registers(&interference.interner);
-    let num_gp_registers = gp_registers.len();
+            for v in &self.interference.graph[u] {
+                if colored.test(self.get_alias(v)) {
+                    ok_colors.retain(|&color| color != self.color[&self.get_alias(v)]);
+                }
+            }
 
-    let mut mapping: HashMap<usize, usize> = gp_registers.iter().map(|&reg| (reg, reg)).collect();
-    let mut spilled: Vec<usize> = Vec::new();
-    let mut neighbor_colors = BitVector::new(num_gp_registers);
-
-    while let Some(u) = stack.pop() {
-        neighbor_colors.set_from(interference.graph[u].iter().filter_map(|v| {
-            mapping
-                .get(&v)
-                .and_then(|&color| gp_registers.iter().position(|&reg| reg == color))
-        }));
-
-        if let Some((_, &color)) = gp_registers
-            .iter()
-            .enumerate()
-            .find(|&(i, _)| !neighbor_colors.test(i))
-        {
-            mapping.insert(u, color);
-        } else {
-            spilled.push(u);
+            if ok_colors.is_empty() {
+                self.spill_nodes.insert(u);
+            } else {
+                self.colored_nodes.set(u);
+                self.color.insert(u, ok_colors[0]);
+            }
         }
 
-        neighbor_colors.clear();
-    }
-
-    ColoringResult {
-        interner: &interference.interner,
-        mapping,
-        spilled,
+        for node in &self.coalesced_nodes {
+            self.color.insert(node, self.color[&self.get_alias(node)]);
+        }
     }
 }
 
-fn gp_registers<T: FromIterator<usize>>(interner: &Interner<Value>) -> T {
-    Register::GP_REGISTERS
-        .iter()
-        .map(|&reg| {
-            interner
-                .get(&Value::Register(reg))
-                .expect("registers should be interned")
-        })
-        .collect()
-}
-
-pub fn color_graph<'a>(interference: &'a InterferenceGraph) -> ColoringResult<'a> {
-    select(interference, simplify(interference))
+pub fn color_graph<'a, 'b>(
+    func: &Function,
+    interference: &'a mut InterferenceGraph<'a>,
+    prev_spilled: &'b mut HashSet<Value>,
+) -> ColoringResult<'a> {
+    let allocator = Allocator::new(func, interference, prev_spilled);
+    allocator.allocate()
 }

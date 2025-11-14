@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
+use std::ops::Index;
 
 pub trait DisplayResolved {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result;
@@ -66,7 +67,7 @@ impl Register {
         Register::RBX,
     ];
 
-    pub const NUM_GP_REGISTERS: usize = 15;
+    pub const NUM_GP_REGISTERS: u32 = 15;
 }
 
 impl fmt::Display for Register {
@@ -129,7 +130,7 @@ impl DisplayResolved for Value {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SymbolId(pub usize);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ArithmeticOp {
     PlusEq,
     MinusEq,
@@ -149,7 +150,7 @@ impl fmt::Display for ArithmeticOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ShiftOp {
     LeftShiftEq,
     RightShiftEq,
@@ -165,7 +166,7 @@ impl fmt::Display for ShiftOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CompareOp {
     Less,
     LessEq,
@@ -183,7 +184,7 @@ impl fmt::Display for CompareOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Instruction {
     Assign {
         dst: Value,
@@ -702,6 +703,14 @@ impl<T: Clone + Eq + Hash> Interner<T> {
     }
 }
 
+impl<T: Eq + Hash> Index<&T> for Interner<T> {
+    type Output = usize;
+
+    fn index(&self, index: &T) -> &Self::Output {
+        &self.map[index]
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ControlFlowGraph {
     pub successors: Vec<Vec<BlockId>>,
@@ -730,9 +739,7 @@ impl ControlFlowGraph {
         for block in basic_blocks {
             match block.instructions.last() {
                 Some(Instruction::CJump { label, .. }) => {
-                    let successor = label_to_block
-                        .get(label)
-                        .unwrap_or_else(|| panic!("invalid label {:?}", label));
+                    let successor = label_to_block.get(label).expect("invalid label");
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
 
@@ -743,9 +750,7 @@ impl ControlFlowGraph {
                 }
 
                 Some(Instruction::Goto(label)) => {
-                    let successor = label_to_block
-                        .get(label)
-                        .unwrap_or_else(|| panic!("invalid label {:?}", label));
+                    let successor = label_to_block.get(label).expect("invalid label");
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
                 }
@@ -761,7 +766,7 @@ impl ControlFlowGraph {
                     }
                 }
 
-                None => panic!("empty block {:?}", block.id),
+                None => panic!("empty block"),
             };
         }
 

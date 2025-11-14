@@ -3,36 +3,6 @@ use chumsky::prelude::*;
 use l2::*;
 use std::{fs, mem};
 
-macro_rules! parse {
-    ( $file_name:ident, $parser:expr ) => {{
-        let file_name = $file_name.to_string();
-        let input = fs::read_to_string(&file_name).unwrap_or_else(|e| panic!("{}", e));
-
-        let (output, errors) = $parser
-            .parse_with_state(&input, &mut extra::SimpleState(Interner::new()))
-            .into_output_errors();
-
-        errors.into_iter().for_each(|e| {
-            Report::build(
-                ReportKind::Error,
-                (file_name.clone(), e.span().into_range()),
-            )
-            .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-            .with_message(e.to_string())
-            .with_label(
-                Label::new((file_name.clone(), e.span().into_range()))
-                    .with_message(e.reason().to_string())
-                    .with_color(Color::Red),
-            )
-            .finish()
-            .eprint(sources([(file_name.clone(), input.clone())]))
-            .unwrap();
-        });
-
-        output
-    }};
-}
-
 type MyExtra<'src> = extra::Full<Rich<'src, char>, extra::SimpleState<Interner<String>>, ()>;
 
 fn separators<'src>() -> impl Parser<'src, &'src str, (), MyExtra<'src>> + Copy {
@@ -399,35 +369,29 @@ fn program<'src>() -> impl Parser<'src, &'src str, Program, MyExtra<'src>> {
 }
 
 pub fn parse_file(file_name: &str) -> Option<Program> {
-    parse!(file_name, program())
-}
+    let file_name = file_name.to_string();
+    let input = fs::read_to_string(&file_name).unwrap_or_else(|e| panic!("{}", e));
 
-pub fn parse_function_file(file_name: &str) -> Option<Program> {
-    parse!(
-        file_name,
-        function().map_with(|func, e| Program {
-            entry_point: "fetch".to_string(),
-            functions: vec![func],
-            interner: mem::take(e.state()),
-        })
-    )
-}
+    let (output, errors) = program()
+        .parse_with_state(&input, &mut extra::SimpleState(Interner::new()))
+        .into_output_errors();
 
-pub fn parse_spill_file(file_name: &str) -> Option<(Program, Value, String)> {
-    parse!(
-        file_name,
-        function()
-            .map_with(|func, e| Program {
-                entry_point: "fetch".to_string(),
-                functions: vec![func],
-                interner: mem::take(e.state()),
-            })
-            .then(variable_name().padded(),)
-            .map(|(mut prog, name)| {
-                let var = Value::Variable(SymbolId(prog.interner.intern(name.to_string())));
-                (prog, var)
-            })
-            .then(variable_name().map(|var| var.to_string()).padded())
-            .map(|((prog, var), prefix)| (prog, var, prefix))
-    )
+    errors.into_iter().for_each(|e| {
+        Report::build(
+            ReportKind::Error,
+            (file_name.clone(), e.span().into_range()),
+        )
+        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+        .with_message(e.to_string())
+        .with_label(
+            Label::new((file_name.clone(), e.span().into_range()))
+                .with_message(e.reason().to_string())
+                .with_color(Color::Red),
+        )
+        .finish()
+        .eprint(sources([(file_name.clone(), input.clone())]))
+        .unwrap();
+    });
+
+    output
 }

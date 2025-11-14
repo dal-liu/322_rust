@@ -44,6 +44,10 @@ impl CodeGenerator {
         Ok(())
     }
 
+    pub fn finish(mut self) -> io::Result<()> {
+        self.stream.flush()
+    }
+
     fn emit_function(&mut self, func: &Function) -> io::Result<()> {
         writeln!(self.stream, "_{}:", func.name)?;
 
@@ -63,11 +67,6 @@ impl CodeGenerator {
 
         match inst {
             Assign { dst, src } => {
-                if let Value::Register(reg) = src {
-                    if dst == reg {
-                        return Ok(());
-                    }
-                }
                 writeln!(self.stream, "\tmovq {}, %{}", self.format_value(src), dst)
             }
             Load { dst, src, offset } => {
@@ -305,10 +304,6 @@ impl CodeGenerator {
             RCX => "%cl",
             RSP => panic!("rsp cannot be 8 bit"),
         }
-    }
-
-    pub fn finish(mut self) -> io::Result<()> {
-        self.stream.flush()
     }
 }
 

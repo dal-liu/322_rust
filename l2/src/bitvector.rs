@@ -75,10 +75,8 @@ impl BitVector {
         }
     }
 
-    pub fn count(&self) -> usize {
-        self.vec
-            .iter()
-            .fold(0, |acc, word| acc + word.count_ones() as usize)
+    pub fn count(&self) -> u32 {
+        self.vec.iter().fold(0, |acc, word| acc + word.count_ones())
     }
 
     pub fn intersection(&mut self, other: &Self) {
@@ -92,6 +90,12 @@ impl BitVector {
         for index in iter {
             self.reset(index);
         }
+    }
+
+    pub fn resize(&mut self, len: usize) {
+        let num_words = (len + Self::BITWORD_SIZE - 1) / Self::BITWORD_SIZE;
+        self.vec.resize(num_words, 0);
+        self.len = len;
     }
 }
 

@@ -3,17 +3,15 @@ mod interference;
 mod spilling;
 
 use crate::analysis::compute_liveness;
-use crate::regalloc::coloring::ColoringResult;
-use crate::regalloc::spilling::{spill, spill_all};
+use crate::regalloc::coloring::{ColoringResult, color_graph};
+use crate::regalloc::spilling::spill;
 
 use l2::*;
 use std::collections::HashSet;
 
-pub use crate::regalloc::coloring::color_graph;
 pub use crate::regalloc::interference::build_interference;
-pub use crate::regalloc::spilling::spill_with_display;
 
-fn assign_colors(func: &mut Function, coloring: &ColoringResult) {
+fn rewrite_program(func: &mut Function, coloring: &ColoringResult) {
     func.basic_blocks
         .iter_mut()
         .flat_map(|block| &mut block.instructions)
@@ -23,54 +21,32 @@ fn assign_colors(func: &mut Function, coloring: &ColoringResult) {
                 .chain(inst.uses())
                 .filter(|val| matches!(val, Value::Variable(_)))
                 .for_each(|var| {
-                    let index = coloring
-                        .interner
-                        .get(&var)
-                        .expect("variables should be interned");
-
-                    let color = coloring
-                        .mapping
-                        .get(&index)
-                        .expect("variables should have a color");
-
-                    inst.replace_value(&var, coloring.interner.resolve(*color));
+                    let index = coloring.interner.get(&var).unwrap();
+                    let color = coloring.color[&index];
+                    inst.replace_value(&var, coloring.interner.resolve(color));
                 })
         });
 }
 
 pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) {
-    let original_func = func.clone();
     let prefix = "S";
     let mut suffix = 0;
     let mut all_spilled = HashSet::new();
 
     loop {
         let liveness = compute_liveness(func);
-        let interference = build_interference(func, &liveness);
-        let coloring = color_graph(&interference);
+        let mut interference = build_interference(func, &liveness);
+        let coloring = color_graph(func, &mut interference, &mut all_spilled);
 
-        if coloring.spilled.is_empty() {
-            assign_colors(func, &coloring);
+        if coloring.spill_nodes.is_empty() {
+            rewrite_program(func, &coloring);
             break;
         }
 
-        let to_spill: Vec<Value> = coloring
-            .spilled
-            .iter()
-            .filter_map(|&var| {
-                let var = coloring.interner.resolve(var);
-                (!all_spilled.contains(var)).then_some(var.clone())
-            })
-            .collect();
-
-        if !to_spill.is_empty() {
-            for var in to_spill {
-                let spilled = spill(func, &var, prefix, &mut suffix, interner);
-                all_spilled.extend(spilled.into_iter());
-            }
-        } else {
-            *func = original_func.clone();
-            spill_all(func, prefix, interner);
+        for var in coloring.spill_nodes {
+            let var = coloring.interner.resolve(var);
+            let spilled = spill(func, var, prefix, &mut suffix, interner);
+            all_spilled.extend(spilled.into_iter());
         }
     }
 }

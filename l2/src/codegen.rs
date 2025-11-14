@@ -17,8 +17,7 @@ impl CodeGenerator {
     }
 
     pub fn emit_program(&mut self, prog: &Program) -> io::Result<()> {
-        let l1_prog = translate_program(prog);
-        write!(self.stream, "{}", l1_prog)
+        write!(self.stream, "{}", translate_program(prog))
     }
 
     pub fn finish(mut self) -> io::Result<()> {

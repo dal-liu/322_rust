@@ -7,53 +7,8 @@ use l2::*;
 #[allow(dead_code)]
 pub struct LivenessResult {
     pub interner: Interner<Value>,
-    pub block_in: Vec<BitVector>,
-    pub block_out: Vec<BitVector>,
-    pub in_: Vec<Vec<BitVector>>,
-    pub out: Vec<Vec<BitVector>>,
-}
-
-impl DisplayResolved for LivenessResult {
-    fn fmt_with(
-        &self,
-        f: &mut std::fmt::Formatter,
-        interner: &Interner<String>,
-    ) -> std::fmt::Result {
-        writeln!(f, "(\n(in")?;
-
-        for vec in &self.in_ {
-            for bv in vec {
-                let mut line: Vec<String> = bv
-                    .iter()
-                    .map(|val| self.interner.resolve(val).resolved(interner).to_string())
-                    .collect();
-                line.sort();
-                writeln!(f, "({})", line.join(" "))?;
-            }
-        }
-
-        writeln!(f, ")\n\n(out")?;
-
-        for vec in &self.out {
-            for bv in vec {
-                let mut line: Vec<String> = bv
-                    .iter()
-                    .map(|val| self.interner.resolve(val).resolved(interner).to_string())
-                    .collect();
-                line.sort();
-                writeln!(f, "({})", line.join(" "))?;
-            }
-        }
-
-        writeln!(f, ")\n\n)")
-    }
-}
-
-fn empty_dataflow_set(func: &Function, len: usize) -> Vec<Vec<BitVector>> {
-    func.basic_blocks
-        .iter()
-        .map(|block| vec![BitVector::new(len); block.instructions.len()])
-        .collect()
+    pub in_: Vec<BitVector>,
+    pub out: Vec<BitVector>,
 }
 
 fn value_interner(func: &Function) -> Interner<Value> {
@@ -78,67 +33,42 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
     let mut interner = value_interner(func);
     let num_gp_variables = interner.len();
     let num_blocks = func.basic_blocks.len();
-    let mut block_gen: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
-    let mut block_kill: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
+    let mut gen_: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
+    let mut kill: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
 
     for (i, block) in func.basic_blocks.iter().enumerate() {
         for inst in &block.instructions {
-            block_gen[i].set_from(inst.uses().into_iter().filter_map(|use_| {
+            gen_[i].set_from(inst.uses().into_iter().filter_map(|use_| {
                 let index = interner.intern(use_);
-                (!block_kill[i].test(index)).then_some(index)
+                (!kill[i].test(index)).then_some(index)
             }));
-            block_kill[i].set_from(inst.defs().into_iter().map(|def| interner.intern(def)));
+            kill[i].set_from(inst.defs().into_iter().map(|def| interner.intern(def)));
         }
     }
 
     let cfg = &func.cfg;
-    let mut block_in: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
-    let mut block_out: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
+    let mut in_: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
+    let mut out: Vec<BitVector> = vec![BitVector::new(num_gp_variables); num_blocks];
     let mut worklist = Worklist::new();
     worklist.extend(func.basic_blocks.iter().map(|block| &block.id));
 
     while let Some(id) = worklist.pop() {
         let i = id.0;
 
-        block_out[i].clear();
+        out[i].clear();
         for succ in &cfg.successors[i] {
-            block_out[i].union(&block_in[succ.0]);
+            out[i].union(&in_[succ.0]);
         }
 
-        let mut temp = block_out[i].clone();
-        temp.difference(&block_kill[i]);
-        temp.union(&block_gen[i]);
+        let mut temp = out[i].clone();
+        temp.difference(&kill[i]);
+        temp.union(&gen_[i]);
 
-        if temp != block_in[i] {
-            block_in[i] = temp;
+        if temp != in_[i] {
+            in_[i] = temp;
             worklist.extend(cfg.predecessors[i].iter());
         }
     }
 
-    let mut in_ = empty_dataflow_set(func, num_gp_variables);
-    let mut out = empty_dataflow_set(func, num_gp_variables);
-
-    for block in &func.basic_blocks {
-        let i = block.id.0;
-
-        for (j, inst) in block.instructions.iter().enumerate().rev() {
-            out[i][j] = if j == block.instructions.len() - 1 {
-                block_out[i].clone()
-            } else {
-                in_[i][j + 1].clone()
-            };
-
-            in_[i][j] = out[i][j].clone();
-            in_[i][j].reset_from(inst.defs().into_iter().map(|def| interner.intern(def)));
-            in_[i][j].set_from(inst.uses().into_iter().map(|def| interner.intern(def)));
-        }
-    }
-
-    LivenessResult {
-        interner,
-        block_in,
-        block_out,
-        in_,
-        out,
-    }
+    LivenessResult { interner, in_, out }
 }

@@ -19,7 +19,7 @@ impl<'a> InterferenceGraph<'a> {
 
         let gp_registers: Vec<usize> = Register::GP_REGISTERS
             .iter()
-            .map(|&reg| liveness.interner.get(&Value::Register(reg)).unwrap())
+            .map(|&reg| liveness.interner[&Value::Register(reg)])
             .collect();
         for &u in &gp_registers {
             for &v in &gp_registers {
@@ -35,11 +35,11 @@ impl<'a> InterferenceGraph<'a> {
             for inst in block.instructions.iter().rev() {
                 match inst {
                     Instruction::Assign { src, .. } if src.is_gp_variable() => {
-                        live.reset(liveness.interner.get(src).unwrap());
+                        live.reset(liveness.interner[src]);
                     }
                     Instruction::Shift { src, .. } if matches!(src, Value::Variable(_)) => {
-                        let rcx = graph.interner.get(&Value::Register(Register::RCX)).unwrap();
-                        let u = graph.interner.get(src).unwrap();
+                        let rcx = graph.interner[&Value::Register(Register::RCX)];
+                        let u = graph.interner[src];
                         for &v in &gp_registers {
                             if v != rcx {
                                 graph.add_edge(u, v);
@@ -52,7 +52,7 @@ impl<'a> InterferenceGraph<'a> {
                 let defs: Vec<usize> = inst
                     .defs()
                     .iter()
-                    .map(|def| liveness.interner.get(def).unwrap())
+                    .map(|def| liveness.interner[def])
                     .collect();
 
                 live.set_from(defs.iter().copied());
@@ -65,11 +65,7 @@ impl<'a> InterferenceGraph<'a> {
                 }
 
                 live.reset_from(defs.iter().copied());
-                live.set_from(
-                    inst.uses()
-                        .iter()
-                        .map(|use_| liveness.interner.get(use_).unwrap()),
-                );
+                live.set_from(inst.uses().iter().map(|use_| liveness.interner[use_]));
             }
         }
 

@@ -44,7 +44,7 @@ fn rewrite_program(func: &mut Function, coloring: &ColoringResult) {
                 .chain(inst.uses())
                 .filter(|val| matches!(val, Value::Variable(_)))
                 .for_each(|var| {
-                    let index = coloring.interner.get(&var).unwrap();
+                    let index = coloring.interner[&var];
                     let color = coloring.color[&index];
                     inst.replace_value(&var, coloring.interner.resolve(color));
                 })

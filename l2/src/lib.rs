@@ -697,10 +697,6 @@ impl<T: Clone + Eq + Hash> Interner<T> {
     pub fn len(&self) -> usize {
         self.vec.len()
     }
-
-    pub fn get(&self, value: &T) -> Option<usize> {
-        self.map.get(value).copied()
-    }
 }
 
 impl<T: Eq + Hash> Index<&T> for Interner<T> {

@@ -16,7 +16,7 @@ pub struct ColoringResult<'a> {
 struct ColoringAllocator<'a, 'b> {
     interner: Interner<Instruction>,
     interference: &'a mut InterferenceGraph<'a>,
-    prev_spilled: &'b mut HashSet<Value>,
+    prev_spilled: &'b HashSet<Value>,
 
     precolored: Vec<usize>,
     simplify_worklist: BitVector,
@@ -42,7 +42,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
     pub fn new(
         func: &Function,
         interference: &'a mut InterferenceGraph<'a>,
-        prev_spilled: &'b mut HashSet<Value>,
+        prev_spilled: &'b HashSet<Value>,
     ) -> Self {
         let mut instruction_interner = Interner::new();
 
@@ -404,7 +404,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
 pub fn color_graph<'a, 'b>(
     func: &Function,
     interference: &'a mut InterferenceGraph<'a>,
-    prev_spilled: &'b mut HashSet<Value>,
+    prev_spilled: &'b HashSet<Value>,
 ) -> ColoringResult<'a> {
     let mut allocator = ColoringAllocator::new(func, interference, prev_spilled);
     allocator.allocate();

@@ -14,12 +14,12 @@ pub use crate::regalloc::interference::build_interference;
 pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) {
     let prefix = "S";
     let mut suffix = 0;
-    let mut all_spilled = HashSet::new();
+    let mut prev_spilled = HashSet::new();
 
     loop {
         let liveness = compute_liveness(func);
         let mut interference = build_interference(func, &liveness);
-        let coloring = color_graph(func, &mut interference, &mut all_spilled);
+        let coloring = color_graph(func, &mut interference, &prev_spilled);
 
         if coloring.spill_nodes.is_empty() {
             rewrite_program(func, &coloring);
@@ -29,7 +29,7 @@ pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) 
         for var in coloring.spill_nodes {
             let var = coloring.interner.resolve(var);
             let spilled = spill(func, var, prefix, &mut suffix, interner);
-            all_spilled.extend(spilled.into_iter());
+            prev_spilled.extend(spilled.into_iter());
         }
     }
 }

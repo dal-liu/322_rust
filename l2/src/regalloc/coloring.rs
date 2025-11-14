@@ -384,6 +384,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
     }
 
     fn select_spill(&mut self) {
+        // TODO: implement loop heuristic
         if let Some(node) = self.spill_worklist.iter().find(|&n| {
             !self
                 .prev_spilled

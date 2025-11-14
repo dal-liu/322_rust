@@ -2,14 +2,14 @@ use crate::bitvector::BitVector;
 use crate::regalloc::interference::InterferenceGraph;
 
 use l2::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
 
 #[derive(Debug)]
 pub struct ColoringResult<'a> {
     pub interner: &'a Interner<Value>,
     pub color: HashMap<usize, usize>,
-    pub spill_nodes: HashSet<usize>,
+    pub spill_nodes: BTreeSet<usize>,
 }
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ struct ColoringAllocator<'a, 'b> {
     simplify_worklist: BitVector,
     freeze_worklist: BitVector,
     spill_worklist: BitVector,
-    spill_nodes: HashSet<usize>,
+    spill_nodes: BTreeSet<usize>,
     coalesced_nodes: BitVector,
     colored_nodes: BitVector,
     select_stack: Vec<usize>,
@@ -44,8 +44,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         interference: &'a mut InterferenceGraph<'a>,
         prev_spilled: &'b mut HashSet<Value>,
     ) -> Self {
-        let num_nodes = interference.interner.len();
-        let mut interner = Interner::new();
+        let mut instruction_interner = Interner::new();
 
         func.basic_blocks
             .iter()
@@ -54,7 +53,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
                 Instruction::Assign { dst, src }
                     if dst.is_gp_variable() && src.is_gp_variable() =>
                 {
-                    interner.intern(inst.clone());
+                    instruction_interner.intern(inst.clone());
                 }
                 _ => (),
             });
@@ -64,7 +63,8 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
             .map(|&reg| interference.interner[&Value::Register(reg)])
             .collect();
 
-        let num_moves = interner.len();
+        let num_nodes = interference.interner.len();
+        let num_moves = instruction_interner.len();
         let mut worklist_moves = BitVector::new(num_moves);
         let mut move_list = vec![BitVector::new(num_moves); num_nodes];
 
@@ -75,7 +75,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
                 Instruction::Assign { dst, src }
                     if dst.is_gp_variable() && src.is_gp_variable() =>
                 {
-                    let move_ = interner[inst];
+                    let move_ = instruction_interner[inst];
                     worklist_moves.set(move_);
 
                     for var in [dst, src] {
@@ -94,7 +94,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
             .collect();
 
         let mut allocator = Self {
-            interner,
+            interner: instruction_interner,
             interference,
             prev_spilled,
 
@@ -102,7 +102,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
             simplify_worklist: BitVector::new(num_nodes),
             freeze_worklist: BitVector::new(num_nodes),
             spill_worklist: BitVector::new(num_nodes),
-            spill_nodes: HashSet::new(),
+            spill_nodes: BTreeSet::new(),
             coalesced_nodes: BitVector::new(num_nodes),
             colored_nodes: BitVector::new(num_nodes),
             select_stack: Vec::new(),
@@ -248,11 +248,11 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
 
     fn coalesce(&mut self) {
         if let Some(move_) = self.worklist_moves.iter().next() {
-            let interner = self.interference.interner;
+            let value_interner = self.interference.interner;
 
             if let Instruction::Assign { dst, src } = self.interner.resolve(move_) {
-                let x = self.get_alias(interner[dst]);
-                let y = self.get_alias(interner[src]);
+                let x = self.get_alias(value_interner[dst]);
+                let y = self.get_alias(value_interner[src]);
 
                 let (u, v) = if self.precolored.contains(&y) {
                     (y, x)
@@ -356,7 +356,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
     }
 
     fn freeze_moves(&mut self, u: usize) {
-        let interner = self.interference.interner;
+        let value_interner = self.interference.interner;
 
         for move_ in self.node_moves(u) {
             if self.active_moves.test(move_) {
@@ -369,7 +369,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
 
             let v = match self.interner.resolve(move_) {
                 Instruction::Assign { dst, src } => {
-                    interner[if interner[dst] == u { src } else { dst }]
+                    value_interner[if value_interner[dst] == u { src } else { dst }]
                 }
                 _ => panic!("not a move"),
             };

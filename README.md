@@ -1,3 +1,3 @@
-## Course page
+## Course Page
 
 [https://users.cs.northwestern.edu/~simonec/CC.html](https://users.cs.northwestern.edu/~simonec/CC.html)

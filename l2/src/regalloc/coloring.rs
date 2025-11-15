@@ -1,9 +1,9 @@
-use crate::bitvector::BitVector;
-use crate::regalloc::interference::InterferenceGraph;
-
 use l2::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
+
+use crate::bitvector::BitVector;
+use crate::regalloc::interference::InterferenceGraph;
 
 #[derive(Debug)]
 pub struct ColoringResult<'a> {
@@ -44,19 +44,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         interference: &'a mut InterferenceGraph<'a>,
         prev_spilled: &'b HashSet<Value>,
     ) -> Self {
-        let mut instruction_interner = Interner::new();
-
-        func.basic_blocks
-            .iter()
-            .flat_map(|block| &block.instructions)
-            .for_each(|inst| match inst {
-                Instruction::Assign { dst, src }
-                    if dst.is_gp_variable() && src.is_gp_variable() =>
-                {
-                    instruction_interner.intern(inst.clone());
-                }
-                _ => (),
-            });
+        let instruction_interner = instruction_interner(func);
 
         let precolored: Vec<usize> = Register::GP_REGISTERS
             .iter()
@@ -409,4 +397,20 @@ pub fn color_graph<'a, 'b>(
     let mut allocator = ColoringAllocator::new(func, interference, prev_spilled);
     allocator.allocate();
     allocator.assign_colors()
+}
+
+fn instruction_interner(func: &Function) -> Interner<Instruction> {
+    let mut instruction_interner = Interner::new();
+
+    func.basic_blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .for_each(|inst| match inst {
+            Instruction::Assign { dst, src } if dst.is_gp_variable() && src.is_gp_variable() => {
+                instruction_interner.intern(inst.clone());
+            }
+            _ => (),
+        });
+
+    instruction_interner
 }

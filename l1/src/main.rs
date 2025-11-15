@@ -1,10 +1,10 @@
 mod codegen;
 mod parser;
 
+use clap::Parser;
+
 use crate::codegen::generate_code;
 use crate::parser::parse_file;
-
-use clap::Parser;
 
 #[derive(Parser)]
 struct Cli {

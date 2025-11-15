@@ -1,8 +1,8 @@
-use crate::translation::translate_program;
-
 use l2::*;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
+
+use crate::translation::translate_program;
 
 struct CodeGenerator {
     stream: BufWriter<File>,

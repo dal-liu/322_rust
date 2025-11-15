@@ -2,14 +2,14 @@ use l1;
 use l2::*;
 
 pub fn translate_program(prog: &Program) -> l1::Program {
-    let functions: Vec<l1::Function> = prog
+    let l1_functions: Vec<l1::Function> = prog
         .functions
         .iter()
         .map(|func| translate_function(func, &prog.interner))
         .collect();
     l1::Program {
         entry_point: prog.entry_point.clone(),
-        functions,
+        functions: l1_functions,
     }
 }
 
@@ -80,7 +80,7 @@ fn translate_instruction(
             offset: locals * 8 + offset,
         },
         Arithmetic { dst, op, src } => {
-            let op = match op {
+            let l1_op = match op {
                 ArithmeticOp::PlusEq => l1::ArithmeticOp::PlusEq,
                 ArithmeticOp::MinusEq => l1::ArithmeticOp::MinusEq,
                 ArithmeticOp::MultEq => l1::ArithmeticOp::MultEq,
@@ -88,18 +88,18 @@ fn translate_instruction(
             };
             L1::Arithmetic {
                 dst: translate_register(dst),
-                op,
+                op: l1_op,
                 src: translate_value(src, interner),
             }
         }
         Shift { dst, op, src } => {
-            let op = match op {
+            let l1_op = match op {
                 ShiftOp::LeftShiftEq => l1::ShiftOp::LeftShiftEq,
                 ShiftOp::RightShiftEq => l1::ShiftOp::RightShiftEq,
             };
             L1::Shift {
                 dst: translate_register(dst),
-                op,
+                op: l1_op,
                 src: translate_value(src, interner),
             }
         }
@@ -109,7 +109,7 @@ fn translate_instruction(
             op,
             src,
         } => {
-            let op = match op {
+            let l1_op = match op {
                 ArithmeticOp::PlusEq => l1::ArithmeticOp::PlusEq,
                 ArithmeticOp::MinusEq => l1::ArithmeticOp::MinusEq,
                 _ => panic!("store arithmetic invalid op"),
@@ -117,7 +117,7 @@ fn translate_instruction(
             L1::StoreArithmetic {
                 dst: translate_register(dst),
                 offset: *offset,
-                op,
+                op: l1_op,
                 src: translate_value(src, interner),
             }
         }
@@ -127,20 +127,20 @@ fn translate_instruction(
             src,
             offset,
         } => {
-            let op = match op {
+            let l1_op = match op {
                 ArithmeticOp::PlusEq => l1::ArithmeticOp::PlusEq,
                 ArithmeticOp::MinusEq => l1::ArithmeticOp::MinusEq,
                 _ => panic!("store arithmetic invalid op"),
             };
             L1::LoadArithmetic {
                 dst: translate_register(dst),
-                op,
+                op: l1_op,
                 src: translate_register(src),
                 offset: *offset,
             }
         }
         Compare { dst, lhs, op, rhs } => {
-            let op = match op {
+            let l1_op = match op {
                 CompareOp::Less => l1::CompareOp::Less,
                 CompareOp::LessEq => l1::CompareOp::LessEq,
                 CompareOp::Equal => l1::CompareOp::Equal,
@@ -148,7 +148,7 @@ fn translate_instruction(
             L1::Compare {
                 dst: translate_register(dst),
                 lhs: translate_value(lhs, interner),
-                op,
+                op: l1_op,
                 rhs: translate_value(rhs, interner),
             }
         }
@@ -158,14 +158,14 @@ fn translate_instruction(
             rhs,
             label,
         } => {
-            let op = match op {
+            let l1_op = match op {
                 CompareOp::Less => l1::CompareOp::Less,
                 CompareOp::LessEq => l1::CompareOp::LessEq,
                 CompareOp::Equal => l1::CompareOp::Equal,
             };
             L1::CJump {
                 lhs: translate_value(lhs, interner),
-                op,
+                op: l1_op,
                 rhs: translate_value(rhs, interner),
                 label: interner.resolve(label.0).to_string(),
             }
@@ -199,7 +199,7 @@ fn translate_instruction(
 }
 
 fn translate_function(func: &Function, interner: &Interner<String>) -> l1::Function {
-    let instructions: Vec<l1::Instruction> = func
+    let l1_instructions: Vec<l1::Instruction> = func
         .basic_blocks
         .iter()
         .flat_map(|block| {
@@ -213,6 +213,6 @@ fn translate_function(func: &Function, interner: &Interner<String>) -> l1::Funct
         name: interner.resolve(func.name.0).to_string(),
         args: func.args,
         locals: func.locals,
-        instructions,
+        instructions: l1_instructions,
     }
 }

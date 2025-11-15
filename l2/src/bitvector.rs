@@ -91,12 +91,6 @@ impl BitVector {
             self.reset(index);
         }
     }
-
-    pub fn resize(&mut self, len: usize) {
-        let num_words = (len + Self::BITWORD_SIZE - 1) / Self::BITWORD_SIZE;
-        self.vec.resize(num_words, 0);
-        self.len = len;
-    }
 }
 
 impl<'a> IntoIterator for &'a BitVector {

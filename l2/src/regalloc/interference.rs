@@ -1,7 +1,7 @@
+use l2::*;
+
 use crate::analysis::LivenessResult;
 use crate::bitvector::BitVector;
-
-use l2::*;
 
 #[derive(Debug)]
 pub struct InterferenceGraph<'a> {

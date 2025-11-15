@@ -735,7 +735,7 @@ impl ControlFlowGraph {
         for block in basic_blocks {
             match block.instructions.last() {
                 Some(Instruction::CJump { label, .. }) => {
-                    let successor = label_to_block.get(label).expect("invalid label");
+                    let successor = &label_to_block[label];
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
 
@@ -746,7 +746,7 @@ impl ControlFlowGraph {
                 }
 
                 Some(Instruction::Goto(label)) => {
-                    let successor = label_to_block.get(label).expect("invalid label");
+                    let successor = &label_to_block[label];
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
                 }

@@ -1,7 +1,7 @@
+use l2::*;
+
 use crate::analysis::worklist::Worklist;
 use crate::bitvector::BitVector;
-
-use l2::*;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -36,7 +36,6 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
 
     while let Some(id) = worklist.pop() {
         let i = id.0;
-
         out[i].clear();
         for succ in &cfg.successors[i] {
             out[i].union(&in_[succ.0]);

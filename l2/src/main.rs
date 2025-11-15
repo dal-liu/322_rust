@@ -6,12 +6,12 @@ mod parser;
 mod regalloc;
 mod translation;
 
+use clap::Parser;
+
 use crate::codegen::generate_code;
 use crate::optimization::run_peephole_passes;
 use crate::parser::parse_file;
 use crate::regalloc::allocate_registers;
-
-use clap::Parser;
 
 #[derive(Parser)]
 struct Cli {

@@ -2,14 +2,14 @@ mod coloring;
 mod interference;
 mod spilling;
 
-use crate::analysis::compute_liveness;
-use crate::regalloc::coloring::{ColoringResult, color_graph};
-use crate::regalloc::spilling::spill;
+pub use crate::regalloc::interference::build_interference;
 
 use l2::*;
 use std::collections::HashSet;
 
-pub use crate::regalloc::interference::build_interference;
+use crate::analysis::compute_liveness;
+use crate::regalloc::coloring::{ColoringResult, color_graph};
+use crate::regalloc::spilling::spill;
 
 pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) {
     let prefix = "S";

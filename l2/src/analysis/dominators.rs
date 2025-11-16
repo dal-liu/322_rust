@@ -12,13 +12,14 @@ pub struct DominatorTree {
 impl DominatorTree {
     pub fn new(func: &Function) -> Self {
         let num_blocks = func.basic_blocks.len();
+        let cfg = &func.cfg;
+        let entry_id = &func.basic_blocks[0].id;
+
         let mut sdom = vec![BitVector::new(num_blocks); num_blocks];
         for i in 0..num_blocks {
             sdom[i].set_from(0..num_blocks);
         }
 
-        let cfg = &func.cfg;
-        let entry_id = &func.basic_blocks[0].id;
         let mut worklist = Worklist::new();
         worklist.push(&entry_id);
 

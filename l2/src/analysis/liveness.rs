@@ -56,10 +56,10 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
 }
 
 fn value_interner(func: &Function) -> Interner<Value> {
-    let mut interner = Interner::new();
+    let mut value_interner = Interner::new();
 
     for &reg in Register::GP_REGISTERS {
-        interner.intern(Value::Register(reg));
+        value_interner.intern(Value::Register(reg));
     }
 
     func.basic_blocks
@@ -67,8 +67,8 @@ fn value_interner(func: &Function) -> Interner<Value> {
         .flat_map(|block| &block.instructions)
         .flat_map(|inst| inst.uses().into_iter().chain(inst.defs()))
         .for_each(|var| {
-            interner.intern(var);
+            value_interner.intern(var);
         });
 
-    interner
+    value_interner
 }

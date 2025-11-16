@@ -9,7 +9,6 @@ pub type LoopId = usize;
 #[derive(Debug)]
 pub struct LoopForest {
     pub loops: Vec<Loop>,
-    pub roots: Vec<LoopId>,
     pub block_map: HashMap<BlockId, LoopId>,
 }
 
@@ -44,9 +43,9 @@ impl LoopForest {
         let mut merged_loops: Vec<Loop> = natural_loops
             .fold(
                 vec![BitVector::new(num_blocks); num_blocks],
-                |mut merged_blocks, (header, blocks)| {
-                    merged_blocks[header].union(&blocks);
-                    merged_blocks
+                |mut merged_loops, (header, blocks)| {
+                    merged_loops[header].union(&blocks);
+                    merged_loops
                 },
             )
             .into_iter()
@@ -98,7 +97,6 @@ impl LoopForest {
 
         Self {
             loops: merged_loops,
-            roots,
             block_map,
         }
     }

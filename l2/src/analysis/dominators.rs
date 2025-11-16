@@ -5,8 +5,8 @@ use crate::bitvector::BitVector;
 
 #[derive(Debug)]
 pub struct DominatorTree {
-    pub preorder: Vec<usize>,
-    pub postorder: Vec<usize>,
+    pub preorder: Vec<u32>,
+    pub postorder: Vec<u32>,
 }
 
 impl DominatorTree {
@@ -93,8 +93,8 @@ impl DominatorTree {
         }
     }
 
-    pub fn dominates(&self, u: usize, v: usize) -> bool {
-        self.preorder[u] <= self.preorder[v] && self.postorder[u] >= self.postorder[v]
+    pub fn dominates(&self, u: &BlockId, v: &BlockId) -> bool {
+        self.preorder[u.0] <= self.preorder[v.0] && self.postorder[u.0] >= self.postorder[v.0]
     }
 }
 

@@ -18,22 +18,22 @@ impl LoopForest {
         let num_blocks = func.basic_blocks.len();
 
         let back_edges = func.basic_blocks.iter().flat_map(|block| {
-            let latch = block.id.0;
-            cfg.successors[latch].iter().filter_map(move |succ| {
-                let header = succ.0;
-                dt.dominates(header, latch).then_some((latch, header))
-            })
+            let latch = &block.id;
+            cfg.successors[latch.0]
+                .iter()
+                .filter_map(move |header| dt.dominates(header, latch).then_some((latch, header)))
         });
 
         let natural_loops = back_edges.map(|(latch, header)| {
             let mut stack = vec![latch];
             let mut loop_blocks = BitVector::new(num_blocks);
-            loop_blocks.set(header);
+            loop_blocks.set(header.0);
 
-            while let Some(node) = stack.pop() {
+            while let Some(id) = stack.pop() {
+                let node = id.0;
                 if !loop_blocks.test(node) {
                     loop_blocks.set(node);
-                    stack.extend(cfg.predecessors[node].iter().map(|id| id.0));
+                    stack.extend(cfg.predecessors[node].iter());
                 }
             }
 
@@ -44,7 +44,7 @@ impl LoopForest {
             .fold(
                 vec![BitVector::new(num_blocks); num_blocks],
                 |mut merged_loops, (header, blocks)| {
-                    merged_loops[header].union(&blocks);
+                    merged_loops[header.0].union(&blocks);
                     merged_loops
                 },
             )
@@ -73,11 +73,10 @@ impl LoopForest {
                 });
 
             let (first, second) = merged_loops.split_at_mut(i + 1);
-            let loop_ = &first[i];
+            let loop_header = &first[i].header;
 
             let parent = second.iter_mut().find(|other| {
-                dt.dominates(other.header.0, loop_.header.0)
-                    && other.basic_blocks.contains(&loop_.header)
+                dt.dominates(&other.header, loop_header) && other.basic_blocks.contains(loop_header)
             });
 
             match parent {

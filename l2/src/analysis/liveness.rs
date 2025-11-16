@@ -4,10 +4,8 @@ use crate::analysis::worklist::Worklist;
 use crate::bitvector::BitVector;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct LivenessResult {
     pub interner: Interner<Value>,
-    pub in_: Vec<BitVector>,
     pub out: Vec<BitVector>,
 }
 
@@ -52,7 +50,7 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
         }
     }
 
-    LivenessResult { interner, in_, out }
+    LivenessResult { interner, out }
 }
 
 fn value_interner(func: &Function) -> Interner<Value> {

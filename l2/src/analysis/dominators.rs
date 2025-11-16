@@ -58,36 +58,34 @@ impl DominatorTree {
             }
         }
 
-        // TODO: find a way to do this iteratively
-        fn dfs(
-            node: usize,
-            tree: &Vec<Vec<usize>>,
-            counter: &mut usize,
-            preorder: &mut Vec<usize>,
-            postorder: &mut Vec<usize>,
-        ) {
-            preorder[node] = *counter;
-            *counter += 1;
-
-            for &child in &tree[node] {
-                dfs(child, tree, counter, preorder, postorder);
-            }
-
-            postorder[node] = *counter;
-            *counter += 1;
+        enum TraversalState {
+            Entering,
+            Exiting,
         }
 
         let mut counter = 0;
         let mut preorder = vec![0; num_blocks];
         let mut postorder = vec![0; num_blocks];
+        let mut stack = vec![(entry_id.0, TraversalState::Entering)];
 
-        dfs(
-            entry_id.0,
-            &mut tree,
-            &mut counter,
-            &mut preorder,
-            &mut postorder,
-        );
+        while let Some((node, state)) = stack.pop() {
+            match state {
+                TraversalState::Entering => {
+                    preorder[node] = counter;
+
+                    stack.push((node, TraversalState::Exiting));
+
+                    for &child in tree[node].iter().rev() {
+                        stack.push((child, TraversalState::Entering));
+                    }
+                }
+                TraversalState::Exiting => {
+                    postorder[node] = counter;
+                }
+            }
+
+            counter += 1;
+        }
 
         Self {
             preorder,

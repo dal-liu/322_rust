@@ -35,19 +35,20 @@ pub fn compute_liveness(func: &Function) -> LivenessResult {
     worklist.extend(func.basic_blocks.iter().map(|block| &block.id));
 
     while let Some(id) = worklist.pop() {
-        let i = id.0;
-        out[i].clear();
-        for succ in &cfg.successors[i] {
-            out[i].union(&in_[succ.0]);
+        let node = id.0;
+
+        out[node].clear();
+        for succ in &cfg.successors[node] {
+            out[node].union(&in_[succ.0]);
         }
 
-        let mut temp = out[i].clone();
-        temp.difference(&kill[i]);
-        temp.union(&gen_[i]);
+        let mut temp = out[node].clone();
+        temp.difference(&kill[node]);
+        temp.union(&gen_[node]);
 
-        if temp != in_[i] {
-            in_[i] = temp;
-            worklist.extend(cfg.predecessors[i].iter());
+        if temp != in_[node] {
+            in_[node] = temp;
+            worklist.extend(cfg.predecessors[node].iter());
         }
     }
 

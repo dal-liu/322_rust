@@ -275,27 +275,17 @@ impl Instruction {
             | Arithmetic { dst, src, .. }
             | Shift { dst, src, .. }
             | StoreArithmetic { dst, src, .. }
-            | LoadArithmetic { dst, src, .. } => {
-                let mut uses = Vec::new();
-                for val in [dst, src] {
-                    if val.is_gp_variable() {
-                        uses.push(val.clone());
-                    }
-                }
-                uses
-            }
+            | LoadArithmetic { dst, src, .. } => [dst, src]
+                .into_iter()
+                .filter_map(|val| val.is_gp_variable().then_some(val.clone()))
+                .collect(),
 
             StackArg { .. } | Label(_) | Goto(_) | Input => Vec::new(),
 
-            Compare { lhs, rhs, .. } | CJump { lhs, rhs, .. } => {
-                let mut uses = Vec::new();
-                for val in [lhs, rhs] {
-                    if val.is_gp_variable() {
-                        uses.push(val.clone());
-                    }
-                }
-                uses
-            }
+            Compare { lhs, rhs, .. } | CJump { lhs, rhs, .. } => [lhs, rhs]
+                .into_iter()
+                .filter_map(|val| val.is_gp_variable().then_some(val.clone()))
+                .collect(),
 
             Return => {
                 let result_and_callee_save = [RAX, R12, R13, R14, R15, RBP, RBX];
@@ -715,7 +705,7 @@ pub struct ControlFlowGraph {
 
 impl ControlFlowGraph {
     pub fn new(basic_blocks: &[BasicBlock]) -> Self {
-        let label_to_block: HashMap<SymbolId, BlockId> = basic_blocks
+        let id_map: HashMap<SymbolId, BlockId> = basic_blocks
             .iter()
             .filter_map(|block| {
                 block.instructions.first().and_then(|inst| match inst {
@@ -735,7 +725,7 @@ impl ControlFlowGraph {
         for block in basic_blocks {
             match block.instructions.last() {
                 Some(Instruction::CJump { label, .. }) => {
-                    let successor = &label_to_block[label];
+                    let successor = &id_map[label];
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
 
@@ -746,7 +736,7 @@ impl ControlFlowGraph {
                 }
 
                 Some(Instruction::Goto(label)) => {
-                    let successor = &label_to_block[label];
+                    let successor = &id_map[label];
                     cfg.successors[block.id.0].push(successor.clone());
                     cfg.predecessors[successor.0].push(block.id.clone());
                 }

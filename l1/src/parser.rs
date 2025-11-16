@@ -85,14 +85,14 @@ fn value<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'src>> {
 
 fn register_or_number<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'src>> {
     register()
-        .map(|reg| Value::Register(reg))
-        .or(number().map(|num| Value::Number(num)))
+        .map(Value::Register)
+        .or(number().map(Value::Number))
         .padded_by(separators())
 }
 
 fn write_or_function<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'src>> {
     write_register()
-        .map(|reg| Value::Register(reg))
+        .map(Value::Register)
         .or(function_name().map(|callee| Value::Function(callee.to_string())))
         .padded_by(separators())
 }
@@ -158,8 +158,8 @@ fn label_name<'src>() -> impl Parser<'src, &'src str, &'src str, MyExtra<'src>> 
 
 fn rcx_or_number<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'src>> {
     rcx()
-        .map(|reg| Value::Register(reg))
-        .or(number().map(|num| Value::Number(num)))
+        .map(Value::Register)
+        .or(number().map(Value::Number))
         .padded_by(separators())
 }
 
@@ -293,15 +293,15 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
                 .unwrapped()
                 .filter(|&n| n == 1 || n == 3 || n == 4),
         )
-        .map(|args| Instruction::TensorError(args));
+        .map(Instruction::TensorError);
 
     let increment = write_register()
         .then_ignore(just("++").padded_by(separators()))
-        .map(|reg| Instruction::Increment(reg));
+        .map(Instruction::Increment);
 
     let decrement = write_register()
         .then_ignore(just("--").padded_by(separators()))
-        .map(|reg| Instruction::Decrement(reg));
+        .map(Instruction::Decrement);
 
     let lea = write_register()
         .then_ignore(just('@').padded_by(separators()))

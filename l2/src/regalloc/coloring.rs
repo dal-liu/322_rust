@@ -2,6 +2,7 @@ use l2::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
 
+use crate::analysis::LoopForest;
 use crate::bitvector::BitVector;
 use crate::regalloc::interference::InterferenceGraph;
 
@@ -15,8 +16,8 @@ pub struct ColoringResult<'a> {
 #[derive(Debug)]
 struct ColoringAllocator<'a, 'b> {
     interner: Interner<Instruction>,
-    interference: &'a mut InterferenceGraph<'a>,
     prev_spilled: &'b HashSet<Value>,
+    spill_heuristic: Vec<Vec<(u32, u32)>>,
 
     precolored: Vec<usize>,
     simplify_worklist: BitVector,
@@ -33,6 +34,7 @@ struct ColoringAllocator<'a, 'b> {
     worklist_moves: BitVector,
     active_moves: BitVector,
 
+    interference: &'a mut InterferenceGraph<'a>,
     move_list: Vec<BitVector>,
     alias: Vec<usize>,
     color: HashMap<usize, usize>,
@@ -42,6 +44,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
     pub fn new(
         func: &Function,
         interference: &'a mut InterferenceGraph<'a>,
+        loops: &'a LoopForest,
         prev_spilled: &'b HashSet<Value>,
     ) -> Self {
         let instruction_interner = instruction_interner(func);
@@ -83,8 +86,8 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
 
         let mut allocator = Self {
             interner: instruction_interner,
-            interference,
             prev_spilled,
+            spill_heuristic: vec![Vec::new(); num_nodes],
 
             precolored,
             simplify_worklist: BitVector::new(num_nodes),
@@ -101,6 +104,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
             worklist_moves,
             active_moves: BitVector::new(num_moves),
 
+            interference,
             move_list,
             alias,
             color,
@@ -392,9 +396,10 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
 pub fn color_graph<'a, 'b>(
     func: &Function,
     interference: &'a mut InterferenceGraph<'a>,
+    loops: &'a LoopForest,
     prev_spilled: &'b HashSet<Value>,
 ) -> ColoringResult<'a> {
-    let mut allocator = ColoringAllocator::new(func, interference, prev_spilled);
+    let mut allocator = ColoringAllocator::new(func, interference, loops, prev_spilled);
     allocator.allocate();
     allocator.assign_colors()
 }

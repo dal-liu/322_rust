@@ -7,9 +7,11 @@ pub use crate::regalloc::interference::build_interference;
 use l2::*;
 use std::collections::HashSet;
 
-use crate::analysis::compute_liveness;
-use crate::regalloc::coloring::{ColoringResult, color_graph};
-use crate::regalloc::spilling::spill;
+use crate::analysis::{compute_dominators, compute_liveness, compute_loops};
+use crate::regalloc::{
+    coloring::{ColoringResult, color_graph},
+    spilling::spill,
+};
 
 pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) {
     let prefix = "S";
@@ -19,7 +21,9 @@ pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) 
     loop {
         let liveness = compute_liveness(func);
         let mut interference = build_interference(func, &liveness);
-        let coloring = color_graph(func, &mut interference, &prev_spilled);
+        let dominators = compute_dominators(func);
+        let loops = compute_loops(func, &dominators);
+        let coloring = color_graph(func, &mut interference, &loops, &prev_spilled);
 
         if coloring.spill_nodes.is_empty() {
             rewrite_program(func, &coloring);

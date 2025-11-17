@@ -81,12 +81,12 @@ impl CodeGenerator {
                     dst
                 )
             }
-            Arithmetic { dst, op, src } => {
-                let arith = match op {
-                    ArithmeticOp::PlusEq => "addq",
-                    ArithmeticOp::MinusEq => "subq",
-                    ArithmeticOp::MultEq => "imulq",
-                    ArithmeticOp::AndEq => "andq",
+            Arithmetic { dst, aop, src } => {
+                let arith = match aop {
+                    ArithmeticOp::AddAssign => "addq",
+                    ArithmeticOp::SubAssign => "subq",
+                    ArithmeticOp::MulAssign => "imulq",
+                    ArithmeticOp::BitAndAssign => "andq",
                 };
                 writeln!(
                     self.stream,
@@ -96,10 +96,10 @@ impl CodeGenerator {
                     dst
                 )
             }
-            Shift { dst, op, src } => {
-                let shift = match op {
-                    ShiftOp::LeftShiftEq => "salq",
-                    ShiftOp::RightShiftEq => "sarq",
+            Shift { dst, sop, src } => {
+                let shift = match sop {
+                    ShiftOp::Shl => "salq",
+                    ShiftOp::Shr => "sarq",
                 };
                 writeln!(
                     self.stream,
@@ -112,12 +112,12 @@ impl CodeGenerator {
             StoreArithmetic {
                 dst,
                 offset,
-                op,
+                aop,
                 src,
             } => {
-                let arith = match op {
-                    ArithmeticOp::PlusEq => "addq",
-                    ArithmeticOp::MinusEq => "subq",
+                let arith = match aop {
+                    ArithmeticOp::AddAssign => "addq",
+                    ArithmeticOp::SubAssign => "subq",
                     _ => panic!("store arithmetic invalid op"),
                 };
                 writeln!(
@@ -131,31 +131,31 @@ impl CodeGenerator {
             }
             LoadArithmetic {
                 dst,
-                op,
+                aop,
                 src,
                 offset,
             } => {
-                let arith = match op {
-                    ArithmeticOp::PlusEq => "addq",
-                    ArithmeticOp::MinusEq => "subq",
+                let arith = match aop {
+                    ArithmeticOp::AddAssign => "addq",
+                    ArithmeticOp::SubAssign => "subq",
                     _ => panic!("load arithmetic invalid op"),
                 };
                 writeln!(self.stream, "\t{} {}(%{}), %{}", arith, offset, src, dst)
             }
-            Compare { dst, lhs, op, rhs } => {
+            Compare { dst, lhs, cmp, rhs } => {
                 if let (Value::Number(a), Value::Number(b)) = (lhs, rhs) {
-                    let res = match op {
-                        CompareOp::Less => a < b,
-                        CompareOp::LessEq => a <= b,
-                        CompareOp::Equal => a == b,
+                    let res = match cmp {
+                        CompareOp::Lt => a < b,
+                        CompareOp::Le => a <= b,
+                        CompareOp::Eq => a == b,
                     };
                     writeln!(self.stream, "\tmovq ${}, %{}", res as u8, dst)
                 } else if let Value::Number(n) = lhs {
                     writeln!(self.stream, "\tcmpq ${}, {}", n, self.format_value(rhs))?;
-                    let cmp = match op {
-                        CompareOp::Less => "setg",
-                        CompareOp::LessEq => "setge",
-                        CompareOp::Equal => "sete",
+                    let cmp = match cmp {
+                        CompareOp::Lt => "setg",
+                        CompareOp::Le => "setge",
+                        CompareOp::Eq => "sete",
                     };
                     let dst_8_bit = self.format_register_8_bit(dst);
                     writeln!(self.stream, "\t{} {}", cmp, dst_8_bit)?;
@@ -167,10 +167,10 @@ impl CodeGenerator {
                         self.format_value(rhs),
                         self.format_value(lhs)
                     )?;
-                    let cmp = match op {
-                        CompareOp::Less => "setl",
-                        CompareOp::LessEq => "setle",
-                        CompareOp::Equal => "sete",
+                    let cmp = match cmp {
+                        CompareOp::Lt => "setl",
+                        CompareOp::Le => "setle",
+                        CompareOp::Eq => "sete",
                     };
                     let dst_8_bit = self.format_register_8_bit(dst);
                     writeln!(self.stream, "\t{} {}", cmp, dst_8_bit)?;
@@ -179,15 +179,15 @@ impl CodeGenerator {
             }
             CJump {
                 lhs,
-                op,
+                cmp,
                 rhs,
                 label,
             } => {
                 if let (Value::Number(a), Value::Number(b)) = (lhs, rhs) {
-                    let res = match op {
-                        CompareOp::Less => a < b,
-                        CompareOp::LessEq => a <= b,
-                        CompareOp::Equal => a == b,
+                    let res = match cmp {
+                        CompareOp::Lt => a < b,
+                        CompareOp::Le => a <= b,
+                        CompareOp::Eq => a == b,
                     };
                     if res {
                         writeln!(self.stream, "\tjmp _{}", label)
@@ -196,10 +196,10 @@ impl CodeGenerator {
                     }
                 } else if let Value::Number(n) = lhs {
                     writeln!(self.stream, "\tcmpq ${}, {}", n, self.format_value(rhs))?;
-                    let jmp = match op {
-                        CompareOp::Less => "jg",
-                        CompareOp::LessEq => "jge",
-                        CompareOp::Equal => "je",
+                    let jmp = match cmp {
+                        CompareOp::Lt => "jg",
+                        CompareOp::Le => "jge",
+                        CompareOp::Eq => "je",
                     };
                     writeln!(self.stream, "\t{} _{}", jmp, label)
                 } else {
@@ -209,10 +209,10 @@ impl CodeGenerator {
                         self.format_value(rhs),
                         self.format_value(lhs)
                     )?;
-                    let jmp = match op {
-                        CompareOp::Less => "jl",
-                        CompareOp::LessEq => "jle",
-                        CompareOp::Equal => "je",
+                    let jmp = match cmp {
+                        CompareOp::Lt => "jl",
+                        CompareOp::Le => "jle",
+                        CompareOp::Eq => "je",
                     };
                     writeln!(self.stream, "\t{} _{}", jmp, label)
                 }

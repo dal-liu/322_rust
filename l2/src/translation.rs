@@ -79,93 +79,93 @@ fn translate_instruction(
             src: l1::Register::RSP,
             offset: locals * 8 + offset,
         },
-        Arithmetic { dst, op, src } => {
-            let l1_op = match op {
-                ArithmeticOp::PlusEq => l1::ArithmeticOp::PlusEq,
-                ArithmeticOp::MinusEq => l1::ArithmeticOp::MinusEq,
-                ArithmeticOp::MultEq => l1::ArithmeticOp::MultEq,
-                ArithmeticOp::AndEq => l1::ArithmeticOp::AndEq,
+        Arithmetic { dst, aop, src } => {
+            let l1_aop = match aop {
+                ArithmeticOp::AddAssign => l1::ArithmeticOp::AddAssign,
+                ArithmeticOp::SubAssign => l1::ArithmeticOp::SubAssign,
+                ArithmeticOp::MulAssign => l1::ArithmeticOp::MulAssign,
+                ArithmeticOp::BitAndAssign => l1::ArithmeticOp::BitAndAssign,
             };
             L1::Arithmetic {
                 dst: translate_register(dst),
-                op: l1_op,
+                aop: l1_aop,
                 src: translate_value(src, interner),
             }
         }
-        Shift { dst, op, src } => {
-            let l1_op = match op {
-                ShiftOp::LeftShiftEq => l1::ShiftOp::LeftShiftEq,
-                ShiftOp::RightShiftEq => l1::ShiftOp::RightShiftEq,
+        Shift { dst, sop, src } => {
+            let l1_sop = match sop {
+                ShiftOp::Shl => l1::ShiftOp::Shl,
+                ShiftOp::Shr => l1::ShiftOp::Shr,
             };
             L1::Shift {
                 dst: translate_register(dst),
-                op: l1_op,
+                sop: l1_sop,
                 src: translate_value(src, interner),
             }
         }
         StoreArithmetic {
             dst,
             offset,
-            op,
+            aop,
             src,
         } => {
-            let l1_op = match op {
-                ArithmeticOp::PlusEq => l1::ArithmeticOp::PlusEq,
-                ArithmeticOp::MinusEq => l1::ArithmeticOp::MinusEq,
+            let l1_aop = match aop {
+                ArithmeticOp::AddAssign => l1::ArithmeticOp::AddAssign,
+                ArithmeticOp::SubAssign => l1::ArithmeticOp::SubAssign,
                 _ => panic!("store arithmetic invalid op"),
             };
             L1::StoreArithmetic {
                 dst: translate_register(dst),
                 offset: *offset,
-                op: l1_op,
+                aop: l1_aop,
                 src: translate_value(src, interner),
             }
         }
         LoadArithmetic {
             dst,
-            op,
+            aop,
             src,
             offset,
         } => {
-            let l1_op = match op {
-                ArithmeticOp::PlusEq => l1::ArithmeticOp::PlusEq,
-                ArithmeticOp::MinusEq => l1::ArithmeticOp::MinusEq,
+            let l1_aop = match aop {
+                ArithmeticOp::AddAssign => l1::ArithmeticOp::AddAssign,
+                ArithmeticOp::SubAssign => l1::ArithmeticOp::SubAssign,
                 _ => panic!("store arithmetic invalid op"),
             };
             L1::LoadArithmetic {
                 dst: translate_register(dst),
-                op: l1_op,
+                aop: l1_aop,
                 src: translate_register(src),
                 offset: *offset,
             }
         }
-        Compare { dst, lhs, op, rhs } => {
-            let l1_op = match op {
-                CompareOp::Less => l1::CompareOp::Less,
-                CompareOp::LessEq => l1::CompareOp::LessEq,
-                CompareOp::Equal => l1::CompareOp::Equal,
+        Compare { dst, lhs, cmp, rhs } => {
+            let l1_cmp = match cmp {
+                CompareOp::Lt => l1::CompareOp::Lt,
+                CompareOp::Le => l1::CompareOp::Le,
+                CompareOp::Eq => l1::CompareOp::Eq,
             };
             L1::Compare {
                 dst: translate_register(dst),
                 lhs: translate_value(lhs, interner),
-                op: l1_op,
+                cmp: l1_cmp,
                 rhs: translate_value(rhs, interner),
             }
         }
         CJump {
             lhs,
-            op,
+            cmp,
             rhs,
             label,
         } => {
-            let l1_op = match op {
-                CompareOp::Less => l1::CompareOp::Less,
-                CompareOp::LessEq => l1::CompareOp::LessEq,
-                CompareOp::Equal => l1::CompareOp::Equal,
+            let l1_cmp = match cmp {
+                CompareOp::Lt => l1::CompareOp::Lt,
+                CompareOp::Le => l1::CompareOp::Le,
+                CompareOp::Eq => l1::CompareOp::Eq,
             };
             L1::CJump {
                 lhs: translate_value(lhs, interner),
-                op: l1_op,
+                cmp: l1_cmp,
                 rhs: translate_value(rhs, interner),
                 label: interner.resolve(label.0).to_string(),
             }

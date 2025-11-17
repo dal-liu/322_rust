@@ -67,19 +67,19 @@ impl fmt::Display for Value {
 
 #[derive(Debug, Clone)]
 pub enum ArithmeticOp {
-    PlusEq,
-    MinusEq,
-    MultEq,
-    AndEq,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    BitAndAssign,
 }
 
 impl fmt::Display for ArithmeticOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op = match self {
-            Self::PlusEq => "+=",
-            Self::MinusEq => "-=",
-            Self::MultEq => "*=",
-            Self::AndEq => "&=",
+            Self::AddAssign => "+=",
+            Self::SubAssign => "-=",
+            Self::MulAssign => "*=",
+            Self::BitAndAssign => "&=",
         };
         write!(f, "{}", op)
     }
@@ -87,15 +87,15 @@ impl fmt::Display for ArithmeticOp {
 
 #[derive(Debug, Clone)]
 pub enum ShiftOp {
-    LeftShiftEq,
-    RightShiftEq,
+    Shl,
+    Shr,
 }
 
 impl fmt::Display for ShiftOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op = match self {
-            Self::LeftShiftEq => "<<=",
-            Self::RightShiftEq => ">>=",
+            Self::Shl => "<<=",
+            Self::Shr => ">>=",
         };
         write!(f, "{}", op)
     }
@@ -103,17 +103,17 @@ impl fmt::Display for ShiftOp {
 
 #[derive(Debug, Clone)]
 pub enum CompareOp {
-    Less,
-    LessEq,
-    Equal,
+    Lt,
+    Le,
+    Eq,
 }
 
 impl fmt::Display for CompareOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let op = match self {
-            Self::Less => "<",
-            Self::LessEq => "<=",
-            Self::Equal => "=",
+            Self::Lt => "<",
+            Self::Le => "<=",
+            Self::Eq => "=",
         };
         write!(f, "{}", op)
     }
@@ -137,35 +137,35 @@ pub enum Instruction {
     },
     Arithmetic {
         dst: Register,
-        op: ArithmeticOp,
+        aop: ArithmeticOp,
         src: Value,
     },
     Shift {
         dst: Register,
-        op: ShiftOp,
+        sop: ShiftOp,
         src: Value,
     },
     StoreArithmetic {
         dst: Register,
         offset: i64,
-        op: ArithmeticOp,
+        aop: ArithmeticOp,
         src: Value,
     },
     LoadArithmetic {
         dst: Register,
-        op: ArithmeticOp,
+        aop: ArithmeticOp,
         src: Register,
         offset: i64,
     },
     Compare {
         dst: Register,
         lhs: Value,
-        op: CompareOp,
+        cmp: CompareOp,
         rhs: Value,
     },
     CJump {
         lhs: Value,
-        op: CompareOp,
+        cmp: CompareOp,
         rhs: Value,
         label: String,
     },
@@ -203,29 +203,29 @@ impl fmt::Display for Instruction {
             Store { dst, offset, src } => {
                 write!(f, "mem {} {} <- {}", dst, offset, src)
             }
-            Arithmetic { dst, op, src } => write!(f, "{} {} {}", dst, op, src),
-            Shift { dst, op, src } => write!(f, "{} {} {}", dst, op, src),
+            Arithmetic { dst, aop, src } => write!(f, "{} {} {}", dst, aop, src),
+            Shift { dst, sop, src } => write!(f, "{} {} {}", dst, sop, src),
             StoreArithmetic {
                 dst,
                 offset,
-                op,
+                aop,
                 src,
-            } => write!(f, "mem {} {} {} {}", dst, offset, op, src),
+            } => write!(f, "mem {} {} {} {}", dst, offset, aop, src),
             LoadArithmetic {
                 dst,
-                op,
+                aop,
                 src,
                 offset,
-            } => write!(f, "{} {} mem {} {}", dst, op, src, offset),
-            Compare { dst, lhs, op, rhs } => {
-                write!(f, "{} <- {} {} {}", dst, lhs, op, rhs)
+            } => write!(f, "{} {} mem {} {}", dst, aop, src, offset),
+            Compare { dst, lhs, cmp, rhs } => {
+                write!(f, "{} <- {} {} {}", dst, lhs, cmp, rhs)
             }
             CJump {
                 lhs,
-                op,
+                cmp,
                 rhs,
                 label,
-            } => write!(f, "cjump {} {} {} :{}", lhs, op, rhs, label),
+            } => write!(f, "cjump {} {} {} :{}", lhs, cmp, rhs, label),
             Label(label) => write!(f, ":{}", label),
             Goto(label) => write!(f, "goto :{}", label),
             Return => write!(f, "return"),

@@ -1,7 +1,8 @@
 use ariadne::{Color, Label, Report, ReportKind, sources};
 use chumsky::prelude::*;
 use l2::*;
-use std::{fs, mem};
+use std::fs;
+use std::mem;
 
 type MyExtra<'src> = extra::Full<Rich<'src, char>, extra::SimpleState<Interner<String>>, ()>;
 
@@ -100,25 +101,21 @@ fn register_or_variable<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'
 fn arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, MyExtra<'src>> {
     choice((
         memory_arithmetic_op(),
-        just("*=").to(ArithmeticOp::MultEq),
-        just("&=").to(ArithmeticOp::AndEq),
+        just("*=").to(ArithmeticOp::MulAssign),
+        just("&=").to(ArithmeticOp::BitAndAssign),
     ))
     .padded_by(separators())
 }
 
 fn shift_op<'src>() -> impl Parser<'src, &'src str, ShiftOp, MyExtra<'src>> {
-    choice((
-        just("<<=").to(ShiftOp::LeftShiftEq),
-        just(">>=").to(ShiftOp::RightShiftEq),
-    ))
-    .padded_by(separators())
+    choice((just("<<=").to(ShiftOp::Shl), just(">>=").to(ShiftOp::Shr))).padded_by(separators())
 }
 
 fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp, MyExtra<'src>> {
     choice((
-        just("<=").to(CompareOp::LessEq),
-        just("<").to(CompareOp::Less),
-        just("=").to(CompareOp::Equal),
+        just("<=").to(CompareOp::Le),
+        just("<").to(CompareOp::Lt),
+        just('=').to(CompareOp::Eq),
     ))
     .padded_by(separators())
 }
@@ -164,18 +161,15 @@ fn rcx_variable_number<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'s
 
 fn memory_arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, MyExtra<'src>> {
     just("+=")
-        .to(ArithmeticOp::PlusEq)
-        .or(just("-=").to(ArithmeticOp::MinusEq))
+        .to(ArithmeticOp::AddAssign)
+        .or(just("-=").to(ArithmeticOp::SubAssign))
         .padded_by(separators())
 }
 
 fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src>> {
     let arrow = just("<-").padded_by(separators());
-
     let mem = just("mem").padded_by(separators());
-
     let call_keyword = just("call").padded_by(separators());
-
     let stack_arg_keyword = just("stack-arg").padded_by(separators());
 
     let assign = write_value()
@@ -204,22 +198,22 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
     let arithmetic = write_value()
         .then(arithmetic_op())
         .then(register_variable_number())
-        .map(|((dst, op), src)| Instruction::Arithmetic { dst, op, src });
+        .map(|((dst, aop), src)| Instruction::Arithmetic { dst, aop, src });
 
     let shift = write_value()
         .then(shift_op())
         .then(rcx_variable_number())
-        .map(|((dst, op), src)| Instruction::Shift { dst, op, src });
+        .map(|((dst, sop), src)| Instruction::Shift { dst, sop, src });
 
     let store_arithmetic = mem
         .ignore_then(register_or_variable())
         .then(multiplicative_of_8())
         .then(memory_arithmetic_op())
         .then(register_variable_number())
-        .map(|(((dst, offset), op), src)| Instruction::StoreArithmetic {
+        .map(|(((dst, offset), aop), src)| Instruction::StoreArithmetic {
             dst,
             offset,
-            op,
+            aop,
             src,
         });
 
@@ -228,9 +222,9 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .then_ignore(mem)
         .then(register_or_variable())
         .then(multiplicative_of_8())
-        .map(|(((dst, op), src), offset)| Instruction::LoadArithmetic {
+        .map(|(((dst, aop), src), offset)| Instruction::LoadArithmetic {
             dst,
-            op,
+            aop,
             src,
             offset,
         });
@@ -240,7 +234,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .then(register_variable_number())
         .then(compare_op())
         .then(register_variable_number())
-        .map(|(((dst, lhs), op), rhs)| Instruction::Compare { dst, lhs, op, rhs });
+        .map(|(((dst, lhs), cmp), rhs)| Instruction::Compare { dst, lhs, cmp, rhs });
 
     let cjump = just("cjump")
         .padded_by(separators())
@@ -248,9 +242,9 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .then(compare_op())
         .then(register_variable_number())
         .then(label_name())
-        .map_with(|(((lhs, op), rhs), label), e| Instruction::CJump {
+        .map_with(|(((lhs, cmp), rhs), label), e| Instruction::CJump {
             lhs,
-            op,
+            cmp,
             rhs,
             label: SymbolId(e.state().intern(label.to_string())),
         });
@@ -263,7 +257,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .ignore_then(label_name())
         .map_with(|label, e| Instruction::Goto(SymbolId(e.state().intern(label.to_string()))));
 
-    let return_inst = just("return")
+    let return_ = just("return")
         .padded_by(separators())
         .to(Instruction::Return);
 
@@ -340,7 +334,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         cjump,
         label_inst,
         goto,
-        return_inst,
+        return_,
         call_inst,
         print,
         input,
@@ -351,8 +345,6 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         decrement,
         lea,
     ))
-    .padded_by(comment().repeated())
-    .padded()
 }
 
 fn function<'src>() -> impl Parser<'src, &'src str, Function, MyExtra<'src>> {
@@ -363,6 +355,8 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function, MyExtra<'src>> {
         .then(number().padded_by(comment().repeated()).padded())
         .then(
             instruction()
+                .padded_by(comment().repeated())
+                .padded()
                 .repeated()
                 .at_least(1)
                 .collect::<Vec<Instruction>>(),

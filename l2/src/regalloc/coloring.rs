@@ -19,7 +19,7 @@ pub struct ColoringResult<'a> {
 struct ColoringAllocator<'a, 'b> {
     interner: Interner<Instruction>,
     loops: &'a LoopForest,
-    spill_costs: Vec<HashMap<BlockId, u32>>,
+    spill_costs: Vec<Vec<u32>>,
     prev_spilled: &'b HashSet<Value>,
 
     precolored: Vec<NodeId>,
@@ -54,17 +54,13 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
 
         let num_nodes = interference.interner.len();
         let spill_costs = func.basic_blocks.iter().fold(
-            vec![HashMap::new(); num_nodes],
+            vec![vec![0; func.basic_blocks.len()]; num_nodes],
             |mut spill_costs, block| {
                 block
                     .instructions
                     .iter()
                     .flat_map(|inst| inst.defs().into_iter().chain(inst.uses()))
-                    .for_each(|var| {
-                        *spill_costs[interference.interner[&var]]
-                            .entry(block.id.clone())
-                            .or_insert(0) += 1;
-                    });
+                    .for_each(|var| spill_costs[interference.interner[&var]][block.id.0] += 1);
                 spill_costs
             },
         );
@@ -421,9 +417,10 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
     fn spill_cost(&self, node: NodeId) -> u32 {
         self.spill_costs[node]
             .iter()
+            .enumerate()
             .fold(0, |spill_cost, (id, num_defs_uses)| {
                 spill_cost
-                    + num_defs_uses * 10_u32.pow(self.loops.loop_depth(id))
+                    + num_defs_uses * 10_u32.pow(self.loops.loop_depth(&BlockId(id)))
                         / self.interference.degree(node)
             })
     }
@@ -441,17 +438,17 @@ pub fn color_graph<'a, 'b>(
 }
 
 fn instruction_interner(func: &Function) -> Interner<Instruction> {
-    let mut instruction_interner = Interner::new();
+    let mut interner = Interner::new();
 
     func.basic_blocks
         .iter()
         .flat_map(|block| &block.instructions)
         .for_each(|inst| match inst {
             Instruction::Assign { dst, src } if dst.is_gp_variable() && src.is_gp_variable() => {
-                instruction_interner.intern(inst.clone());
+                interner.intern(inst.clone());
             }
             _ => (),
         });
 
-    instruction_interner
+    interner
 }

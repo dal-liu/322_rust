@@ -132,55 +132,55 @@ pub struct SymbolId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ArithmeticOp {
-    PlusEq,
-    MinusEq,
-    MultEq,
-    AndEq,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    BitAndAssign,
 }
 
 impl fmt::Display for ArithmeticOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let op = match self {
-            Self::PlusEq => "+=",
-            Self::MinusEq => "-=",
-            Self::MultEq => "*=",
-            Self::AndEq => "&=",
+        let aop = match self {
+            Self::AddAssign => "+=",
+            Self::SubAssign => "-=",
+            Self::MulAssign => "*=",
+            Self::BitAndAssign => "&=",
         };
-        write!(f, "{}", op)
+        write!(f, "{}", aop)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ShiftOp {
-    LeftShiftEq,
-    RightShiftEq,
+    Shl,
+    Shr,
 }
 
 impl fmt::Display for ShiftOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let op = match self {
-            Self::LeftShiftEq => "<<=",
-            Self::RightShiftEq => ">>=",
+        let sop = match self {
+            Self::Shl => "<<=",
+            Self::Shr => ">>=",
         };
-        write!(f, "{}", op)
+        write!(f, "{}", sop)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CompareOp {
-    Less,
-    LessEq,
-    Equal,
+    Lt,
+    Le,
+    Eq,
 }
 
 impl fmt::Display for CompareOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let op = match self {
-            Self::Less => "<",
-            Self::LessEq => "<=",
-            Self::Equal => "=",
+        let cmp = match self {
+            Self::Lt => "<",
+            Self::Le => "<=",
+            Self::Eq => "=",
         };
-        write!(f, "{}", op)
+        write!(f, "{}", cmp)
     }
 }
 
@@ -206,35 +206,35 @@ pub enum Instruction {
     },
     Arithmetic {
         dst: Value,
-        op: ArithmeticOp,
+        aop: ArithmeticOp,
         src: Value,
     },
     Shift {
         dst: Value,
-        op: ShiftOp,
+        sop: ShiftOp,
         src: Value,
     },
     StoreArithmetic {
         dst: Value,
         offset: i64,
-        op: ArithmeticOp,
+        aop: ArithmeticOp,
         src: Value,
     },
     LoadArithmetic {
         dst: Value,
-        op: ArithmeticOp,
+        aop: ArithmeticOp,
         src: Value,
         offset: i64,
     },
     Compare {
         dst: Value,
         lhs: Value,
-        op: CompareOp,
+        cmp: CompareOp,
         rhs: Value,
     },
     CJump {
         lhs: Value,
-        op: CompareOp,
+        cmp: CompareOp,
         rhs: Value,
         label: SymbolId,
     },
@@ -472,66 +472,66 @@ impl DisplayResolved for Instruction {
             StackArg { dst, offset } => {
                 write!(f, "{} <- stack-arg {}", dst.resolved(interner), offset)
             }
-            Arithmetic { dst, op, src } => write!(
+            Arithmetic { dst, aop, src } => write!(
                 f,
                 "{} {} {}",
                 dst.resolved(interner),
-                op,
+                aop,
                 src.resolved(interner)
             ),
-            Shift { dst, op, src } => write!(
+            Shift { dst, sop, src } => write!(
                 f,
                 "{} {} {}",
                 dst.resolved(interner),
-                op,
+                sop,
                 src.resolved(interner)
             ),
             StoreArithmetic {
                 dst,
                 offset,
-                op,
+                aop,
                 src,
             } => write!(
                 f,
                 "mem {} {} {} {}",
                 dst.resolved(interner),
                 offset,
-                op,
+                aop,
                 src.resolved(interner)
             ),
             LoadArithmetic {
                 dst,
-                op,
+                aop,
                 src,
                 offset,
             } => write!(
                 f,
                 "{} {} mem {} {}",
                 dst.resolved(interner),
-                op,
+                aop,
                 src.resolved(interner),
                 offset
             ),
-            Compare { dst, lhs, op, rhs } => {
+            Compare { dst, lhs, cmp, rhs } => {
                 write!(
                     f,
                     "{} <- {} {} {}",
                     dst.resolved(interner),
                     lhs.resolved(interner),
-                    op,
+                    cmp,
                     rhs.resolved(interner)
                 )
             }
             CJump {
                 lhs,
-                op,
+                cmp,
                 rhs,
                 label,
             } => write!(
                 f,
                 "cjump {} {} {} :{}",
                 lhs.resolved(interner),
-                op,
+                cmp,
                 rhs.resolved(interner),
                 interner.resolve(label.0),
             ),
@@ -658,6 +658,90 @@ impl DisplayResolved for Function {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ControlFlowGraph {
+    pub successors: Vec<Vec<BlockId>>,
+    pub predecessors: Vec<Vec<BlockId>>,
+}
+
+impl ControlFlowGraph {
+    pub fn new(basic_blocks: &[BasicBlock]) -> Self {
+        let id_map: HashMap<SymbolId, BlockId> = basic_blocks
+            .iter()
+            .filter_map(|block| {
+                block.instructions.first().and_then(|inst| match inst {
+                    Instruction::Label(label) => Some((label.clone(), block.id.clone())),
+                    _ => None,
+                })
+            })
+            .collect();
+
+        let num_blocks = basic_blocks.len();
+        let mut cfg = Self {
+            successors: vec![Vec::new(); num_blocks],
+            predecessors: vec![Vec::new(); num_blocks],
+        };
+        let last_index = num_blocks.saturating_sub(1);
+
+        for block in basic_blocks {
+            let id = &block.id;
+
+            match block.instructions.last() {
+                Some(Instruction::CJump { label, .. }) => {
+                    let successor = &id_map[label];
+                    cfg.successors[id.0].push(successor.clone());
+                    cfg.predecessors[successor.0].push(id.clone());
+
+                    if id.0 < last_index && id.0 + 1 != successor.0 {
+                        cfg.successors[id.0].push(BlockId(id.0 + 1));
+                        cfg.predecessors[id.0 + 1].push(id.clone());
+                    }
+                }
+
+                Some(Instruction::Goto(label)) => {
+                    let successor = &id_map[label];
+                    cfg.successors[id.0].push(successor.clone());
+                    cfg.predecessors[successor.0].push(id.clone());
+                }
+
+                Some(Instruction::Return)
+                | Some(Instruction::TupleError)
+                | Some(Instruction::TensorError(_)) => (),
+
+                Some(_) => {
+                    if id.0 < last_index {
+                        cfg.successors[id.0].push(BlockId(id.0 + 1));
+                        cfg.predecessors[id.0 + 1].push(id.clone());
+                    }
+                }
+
+                None => panic!("empty block"),
+            };
+        }
+
+        cfg
+    }
+}
+
+#[derive(Debug)]
+pub struct Program {
+    pub entry_point: String,
+    pub functions: Vec<Function>,
+    pub interner: Interner<String>,
+}
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "(@{}", self.entry_point)?;
+
+        for func in &self.functions {
+            writeln!(f, "{}", func.resolved(&self.interner))?;
+        }
+
+        writeln!(f, ")")
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Interner<T> {
     map: HashMap<T, usize>,
@@ -694,87 +778,5 @@ impl<T: Eq + Hash> Index<&T> for Interner<T> {
 
     fn index(&self, index: &T) -> &Self::Output {
         &self.map[index]
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ControlFlowGraph {
-    pub successors: Vec<Vec<BlockId>>,
-    pub predecessors: Vec<Vec<BlockId>>,
-}
-
-impl ControlFlowGraph {
-    pub fn new(basic_blocks: &[BasicBlock]) -> Self {
-        let id_map: HashMap<SymbolId, BlockId> = basic_blocks
-            .iter()
-            .filter_map(|block| {
-                block.instructions.first().and_then(|inst| match inst {
-                    Instruction::Label(label) => Some((label.clone(), block.id.clone())),
-                    _ => None,
-                })
-            })
-            .collect();
-
-        let num_blocks = basic_blocks.len();
-        let mut cfg = Self {
-            successors: vec![Vec::new(); num_blocks],
-            predecessors: vec![Vec::new(); num_blocks],
-        };
-        let last_index = num_blocks.saturating_sub(1);
-
-        for block in basic_blocks {
-            match block.instructions.last() {
-                Some(Instruction::CJump { label, .. }) => {
-                    let successor = &id_map[label];
-                    cfg.successors[block.id.0].push(successor.clone());
-                    cfg.predecessors[successor.0].push(block.id.clone());
-
-                    if block.id.0 < last_index && block.id.0 + 1 != successor.0 {
-                        cfg.successors[block.id.0].push(BlockId(block.id.0 + 1));
-                        cfg.predecessors[block.id.0 + 1].push(block.id.clone());
-                    }
-                }
-
-                Some(Instruction::Goto(label)) => {
-                    let successor = &id_map[label];
-                    cfg.successors[block.id.0].push(successor.clone());
-                    cfg.predecessors[successor.0].push(block.id.clone());
-                }
-
-                Some(Instruction::Return)
-                | Some(Instruction::TupleError)
-                | Some(Instruction::TensorError(_)) => (),
-
-                Some(_) => {
-                    if block.id.0 < last_index {
-                        cfg.successors[block.id.0].push(BlockId(block.id.0 + 1));
-                        cfg.predecessors[block.id.0 + 1].push(block.id.clone());
-                    }
-                }
-
-                None => panic!("empty block"),
-            };
-        }
-
-        cfg
-    }
-}
-
-#[derive(Debug)]
-pub struct Program {
-    pub entry_point: String,
-    pub functions: Vec<Function>,
-    pub interner: Interner<String>,
-}
-
-impl fmt::Display for Program {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "(@{}", self.entry_point)?;
-
-        for func in &self.functions {
-            writeln!(f, "{}", func.resolved(&self.interner))?;
-        }
-
-        writeln!(f, ")")
     }
 }

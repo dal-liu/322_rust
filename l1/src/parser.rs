@@ -106,25 +106,21 @@ fn register<'src>() -> impl Parser<'src, &'src str, Register, MyExtra<'src>> {
 fn arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, MyExtra<'src>> {
     choice((
         memory_arithmetic_op(),
-        just("*=").to(ArithmeticOp::MultEq),
-        just("&=").to(ArithmeticOp::AndEq),
+        just("*=").to(ArithmeticOp::MulAssign),
+        just("&=").to(ArithmeticOp::BitAndAssign),
     ))
     .padded_by(separators())
 }
 
 fn shift_op<'src>() -> impl Parser<'src, &'src str, ShiftOp, MyExtra<'src>> {
-    choice((
-        just("<<=").to(ShiftOp::LeftShiftEq),
-        just(">>=").to(ShiftOp::RightShiftEq),
-    ))
-    .padded_by(separators())
+    choice((just("<<=").to(ShiftOp::Shl), just(">>=").to(ShiftOp::Shr))).padded_by(separators())
 }
 
 fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp, MyExtra<'src>> {
     choice((
-        just("<=").to(CompareOp::LessEq),
-        just("<").to(CompareOp::Less),
-        just("=").to(CompareOp::Equal),
+        just("<=").to(CompareOp::Le),
+        just("<").to(CompareOp::Lt),
+        just("=").to(CompareOp::Eq),
     ))
     .padded_by(separators())
 }
@@ -165,16 +161,14 @@ fn rcx_or_number<'src>() -> impl Parser<'src, &'src str, Value, MyExtra<'src>> {
 
 fn memory_arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, MyExtra<'src>> {
     just("+=")
-        .to(ArithmeticOp::PlusEq)
-        .or(just("-=").to(ArithmeticOp::MinusEq))
+        .to(ArithmeticOp::AddAssign)
+        .or(just("-=").to(ArithmeticOp::SubAssign))
         .padded_by(separators())
 }
 
 fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src>> {
     let arrow = just("<-").padded_by(separators());
-
     let mem = just("mem").padded_by(separators());
-
     let call_keyword = just("call").padded_by(separators());
 
     let assign = write_register()
@@ -198,22 +192,22 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
     let arithmetic = write_register()
         .then(arithmetic_op())
         .then(register_or_number())
-        .map(|((dst, op), src)| Instruction::Arithmetic { dst, op, src });
+        .map(|((dst, aop), src)| Instruction::Arithmetic { dst, aop, src });
 
     let shift = write_register()
         .then(shift_op())
         .then(rcx_or_number())
-        .map(|((dst, op), src)| Instruction::Shift { dst, op, src });
+        .map(|((dst, sop), src)| Instruction::Shift { dst, sop, src });
 
     let store_arithmetic = mem
         .ignore_then(register())
         .then(multiplicative_of_8())
         .then(memory_arithmetic_op())
         .then(register_or_number())
-        .map(|(((dst, offset), op), src)| Instruction::StoreArithmetic {
+        .map(|(((dst, offset), aop), src)| Instruction::StoreArithmetic {
             dst,
             offset,
-            op,
+            aop,
             src,
         });
 
@@ -222,9 +216,9 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .then_ignore(mem)
         .then(register())
         .then(multiplicative_of_8())
-        .map(|(((dst, op), src), offset)| Instruction::LoadArithmetic {
+        .map(|(((dst, aop), src), offset)| Instruction::LoadArithmetic {
             dst,
-            op,
+            aop,
             src,
             offset,
         });
@@ -234,7 +228,7 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .then(register_or_number())
         .then(compare_op())
         .then(register_or_number())
-        .map(|(((dst, lhs), op), rhs)| Instruction::Compare { dst, lhs, op, rhs });
+        .map(|(((dst, lhs), cmp), rhs)| Instruction::Compare { dst, lhs, cmp, rhs });
 
     let cjump = just("cjump")
         .padded_by(separators())
@@ -242,9 +236,9 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         .then(compare_op())
         .then(register_or_number())
         .then(label_name())
-        .map(|(((lhs, op), rhs), label)| Instruction::CJump {
+        .map(|(((lhs, cmp), rhs), label)| Instruction::CJump {
             lhs,
-            op,
+            cmp,
             rhs,
             label: label.to_string(),
         });
@@ -343,8 +337,6 @@ fn instruction<'src>() -> impl Parser<'src, &'src str, Instruction, MyExtra<'src
         decrement,
         lea,
     ))
-    .padded_by(comment().repeated())
-    .padded()
 }
 
 fn function<'src>() -> impl Parser<'src, &'src str, Function, MyExtra<'src>> {
@@ -356,6 +348,8 @@ fn function<'src>() -> impl Parser<'src, &'src str, Function, MyExtra<'src>> {
         .then(number().padded_by(comment().repeated()).padded())
         .then(
             instruction()
+                .padded_by(comment().repeated())
+                .padded()
                 .repeated()
                 .at_least(1)
                 .collect::<Vec<Instruction>>(),

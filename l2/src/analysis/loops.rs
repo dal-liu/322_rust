@@ -24,16 +24,16 @@ impl LoopForest {
                 .filter_map(move |header| dt.dominates(header, latch).then_some((latch, header)))
         });
 
-        let natural_loops = back_edges.map(|(latch, header)| {
+        let natural_loops = back_edges.map(|(&latch, &header)| {
             let mut stack = vec![latch];
             let mut loop_blocks = BitVector::new(num_blocks);
             loop_blocks.set(header.0);
 
             while let Some(id) = stack.pop() {
-                let node = id.0;
-                if !loop_blocks.test(node) {
-                    loop_blocks.set(node);
-                    stack.extend(cfg.predecessors[node].iter());
+                let i = id.0;
+                if !loop_blocks.test(i) {
+                    loop_blocks.set(i);
+                    stack.extend(cfg.predecessors[i].iter().copied());
                 }
             }
 
@@ -50,9 +50,9 @@ impl LoopForest {
             )
             .into_iter()
             .enumerate()
-            .filter_map(|(header, blocks)| {
+            .filter_map(|(i, blocks)| {
                 blocks.any().then_some(Loop {
-                    header: BlockId(header),
+                    header: BlockId(i),
                     basic_blocks: blocks.iter().map(BlockId).collect(),
                     depth: 0,
                     children: Vec::new(),
@@ -68,8 +68,8 @@ impl LoopForest {
             merged_loops
                 .iter()
                 .flat_map(|loop_| &loop_.basic_blocks)
-                .for_each(|id| {
-                    block_map.entry(id.clone()).or_insert(i);
+                .for_each(|&id| {
+                    block_map.entry(id).or_insert(i);
                 });
 
             let (first, second) = merged_loops.split_at_mut(i + 1);

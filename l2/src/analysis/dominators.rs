@@ -13,7 +13,7 @@ impl DominatorTree {
     pub fn new(func: &Function) -> Self {
         let num_blocks = func.basic_blocks.len();
         let cfg = &func.cfg;
-        let entry_id = &func.basic_blocks[0].id;
+        let entry_id = BlockId(0);
 
         let mut sdom = vec![BitVector::new(num_blocks); num_blocks];
         for i in 0..num_blocks {
@@ -21,24 +21,24 @@ impl DominatorTree {
         }
 
         let mut worklist = Worklist::new();
-        worklist.push(&entry_id);
+        worklist.push(entry_id);
 
         while let Some(id) = worklist.pop() {
-            let node = id.0;
+            let i = id.0;
             let mut temp = BitVector::new(num_blocks);
 
-            if node != entry_id.0 {
+            if i != entry_id.0 {
                 temp.set_from(0..num_blocks);
-                for pred in &cfg.predecessors[node] {
+                for pred in &cfg.predecessors[i] {
                     temp.intersection(&sdom[pred.0]);
                 }
             }
 
-            temp.set(node);
+            temp.set(i);
 
-            if temp != sdom[node] {
-                sdom[node] = temp;
-                worklist.extend(cfg.successors[node].iter());
+            if temp != sdom[i] {
+                sdom[i] = temp;
+                worklist.extend(cfg.successors[i].iter().copied());
             }
         }
 

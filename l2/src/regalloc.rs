@@ -23,7 +23,7 @@ pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) 
         let mut interference = build_interference(func, &liveness);
         let dominators = compute_dominators(func);
         let loops = compute_loops(func, &dominators);
-        let coloring = color_graph(func, &mut interference, &loops, &prev_spilled);
+        let coloring = color_graph(func, &liveness, &mut interference, &loops, &prev_spilled);
 
         if coloring.spill_nodes.is_empty() {
             rewrite_program(func, &coloring);
@@ -48,8 +48,7 @@ fn rewrite_program(func: &mut Function, coloring: &ColoringResult) {
                 .chain(inst.uses())
                 .filter(|val| matches!(val, Value::Variable(_)))
                 .for_each(|var| {
-                    let index = coloring.interner[&var];
-                    let color = coloring.color[&index];
+                    let color = coloring.color[&coloring.interner[&var]];
                     inst.replace_value(&var, coloring.interner.resolve(color));
                 })
         });

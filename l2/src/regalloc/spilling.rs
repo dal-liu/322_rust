@@ -21,18 +21,18 @@ pub fn spill(
             let spill_var = if spill_use || spill_def {
                 let new_var =
                     Value::Variable(SymbolId(interner.intern(format!("{}{}", prefix, suffix))));
-                modified = true;
                 *suffix += 1;
-                spill_vars.push(new_var.clone());
+                modified = true;
+                spill_vars.push(new_var);
                 Some(new_var)
             } else {
                 None
             };
 
             if spill_use {
-                if let Some(ref new_var) = spill_var {
+                if let Some(new_var) = spill_var {
                     block.instructions.push(Instruction::Load {
-                        dst: new_var.clone(),
+                        dst: new_var,
                         src: Value::Register(Register::RSP),
                         offset,
                     });
@@ -40,7 +40,7 @@ pub fn spill(
             }
 
             if spill_use || spill_def {
-                let mut new_inst = inst.clone();
+                let mut new_inst = inst;
                 if let Some(ref new_var) = spill_var {
                     new_inst.replace_value(var, new_var);
                 }
@@ -50,11 +50,11 @@ pub fn spill(
             }
 
             if spill_def {
-                if let Some(ref new_var) = spill_var {
+                if let Some(new_var) = spill_var {
                     block.instructions.push(Instruction::Store {
                         dst: Value::Register(Register::RSP),
                         offset,
-                        src: new_var.clone(),
+                        src: new_var,
                     });
                 }
             }

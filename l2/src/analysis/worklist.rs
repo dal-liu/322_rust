@@ -2,12 +2,12 @@ use l2::*;
 use std::collections::{HashSet, VecDeque};
 
 #[derive(Debug)]
-pub struct Worklist<'a> {
-    queue: VecDeque<&'a BlockId>,
-    set: HashSet<&'a BlockId>,
+pub struct Worklist {
+    queue: VecDeque<BlockId>,
+    set: HashSet<BlockId>,
 }
 
-impl<'a> Worklist<'a> {
+impl Worklist {
     pub fn new() -> Self {
         Self {
             queue: VecDeque::new(),
@@ -15,22 +15,22 @@ impl<'a> Worklist<'a> {
         }
     }
 
-    pub fn pop(&mut self) -> Option<&'a BlockId> {
+    pub fn pop(&mut self) -> Option<BlockId> {
         self.queue.pop_front().and_then(|id| {
-            self.set.remove(id);
+            self.set.remove(&id);
             Some(id)
         })
     }
 
-    pub fn push(&mut self, id: &'a BlockId) {
+    pub fn push(&mut self, id: BlockId) {
         if self.set.insert(id) {
             self.queue.push_back(id);
         }
     }
 }
 
-impl<'a> Extend<&'a BlockId> for Worklist<'a> {
-    fn extend<T: IntoIterator<Item = &'a BlockId>>(&mut self, iter: T) {
+impl Extend<BlockId> for Worklist {
+    fn extend<T: IntoIterator<Item = BlockId>>(&mut self, iter: T) {
         for id in iter {
             self.push(id);
         }

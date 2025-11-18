@@ -49,25 +49,32 @@ pub enum Register {
 }
 
 impl Register {
-    pub const GP_REGISTERS: &[Self] = &[
+    pub const NUM_GP_REGISTERS: u32 = 15;
+
+    pub const CALLER_SAVED: &[Register] = &[
+        Register::RAX,
         Register::RDI,
         Register::RSI,
         Register::RDX,
         Register::RCX,
         Register::R8,
         Register::R9,
-        Register::RAX,
         Register::R10,
         Register::R11,
+    ];
+
+    pub const CALLEE_SAVED: &[Register] = &[
+        Register::RBX,
+        Register::RBP,
         Register::R12,
         Register::R13,
         Register::R14,
         Register::R15,
-        Register::RBP,
-        Register::RBX,
     ];
 
-    pub const NUM_GP_REGISTERS: u32 = 15;
+    pub fn gp_registers() -> Vec<Register> {
+        [Self::CALLER_SAVED, Self::CALLEE_SAVED].concat()
+    }
 }
 
 impl fmt::Display for Register {
@@ -96,7 +103,7 @@ impl fmt::Display for Register {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Value {
     Register(Register),
     Number(i64),
@@ -127,10 +134,10 @@ impl DisplayResolved for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct SymbolId(pub usize);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum ArithmeticOp {
     AddAssign,
     SubAssign,
@@ -150,7 +157,7 @@ impl fmt::Display for ArithmeticOp {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum ShiftOp {
     Shl,
     Shr,
@@ -166,7 +173,7 @@ impl fmt::Display for ShiftOp {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum CompareOp {
     Lt,
     Le,
@@ -184,7 +191,7 @@ impl fmt::Display for CompareOp {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Instruction {
     Assign {
         dst: Value,
@@ -268,7 +275,7 @@ impl Instruction {
         match self {
             Assign { src, .. } | Load { src, .. } => src
                 .is_gp_variable()
-                .then_some(vec![src.clone()])
+                .then_some(vec![*src])
                 .unwrap_or_default(),
 
             Store { dst, src, .. }
@@ -277,14 +284,14 @@ impl Instruction {
             | StoreArithmetic { dst, src, .. }
             | LoadArithmetic { dst, src, .. } => [dst, src]
                 .into_iter()
-                .filter_map(|val| val.is_gp_variable().then_some(val.clone()))
+                .filter_map(|&val| val.is_gp_variable().then_some(val))
                 .collect(),
 
             StackArg { .. } | Label(_) | Goto(_) | Input => Vec::new(),
 
             Compare { lhs, rhs, .. } | CJump { lhs, rhs, .. } => [lhs, rhs]
                 .into_iter()
-                .filter_map(|val| val.is_gp_variable().then_some(val.clone()))
+                .filter_map(|&val| val.is_gp_variable().then_some(val))
                 .collect(),
 
             Return => {
@@ -299,7 +306,7 @@ impl Instruction {
                 let args = *args;
                 let mut uses = Vec::new();
                 if callee.is_gp_variable() {
-                    uses.push(callee.clone());
+                    uses.push(*callee);
                 }
                 if args >= 1 {
                     uses.push(Value::Register(RDI));
@@ -347,9 +354,9 @@ impl Instruction {
                 uses
             }
 
-            Increment(val) | Decrement(val) => vec![val.clone()],
+            Increment(val) | Decrement(val) => vec![*val],
 
-            LEA { src, offset, .. } => vec![src.clone(), offset.clone()],
+            LEA { src, offset, .. } => vec![*src, *offset],
         }
     }
 
@@ -365,7 +372,7 @@ impl Instruction {
             | Shift { dst, .. }
             | LoadArithmetic { dst, .. }
             | Compare { dst, .. }
-            | LEA { dst, .. } => vec![dst.clone()],
+            | LEA { dst, .. } => vec![*dst],
 
             Store { .. } | StoreArithmetic { .. } | CJump { .. } | Label(_) | Goto(_) | Return => {
                 Vec::new()
@@ -376,7 +383,7 @@ impl Instruction {
                 caller_save.into_iter().map(Value::Register).collect()
             }
 
-            Increment(val) | Decrement(val) => vec![val.clone()],
+            Increment(val) | Decrement(val) => vec![*val],
         }
     }
 
@@ -385,7 +392,7 @@ impl Instruction {
 
         let replace_helper = |val: &mut Value| {
             if val == old {
-                *val = new.clone();
+                *val = *new;
             }
         };
 
@@ -578,7 +585,7 @@ impl DisplayResolved for BasicBlock {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct BlockId(pub usize);
 
 #[derive(Debug, Clone)]
@@ -670,7 +677,7 @@ impl ControlFlowGraph {
             .iter()
             .filter_map(|block| {
                 block.instructions.first().and_then(|inst| match inst {
-                    Instruction::Label(label) => Some((label.clone(), block.id.clone())),
+                    Instruction::Label(label) => Some((*label, block.id)),
                     _ => None,
                 })
             })
@@ -683,25 +690,23 @@ impl ControlFlowGraph {
         };
         let last_index = num_blocks.saturating_sub(1);
 
-        for block in basic_blocks {
-            let id = &block.id;
-
+        for (i, block) in basic_blocks.iter().enumerate() {
             match block.instructions.last() {
                 Some(Instruction::CJump { label, .. }) => {
-                    let successor = &id_map[label];
-                    cfg.successors[id.0].push(successor.clone());
-                    cfg.predecessors[successor.0].push(id.clone());
+                    let succ = id_map[label];
+                    cfg.successors[i].push(succ);
+                    cfg.predecessors[succ.0].push(BlockId(i));
 
-                    if id.0 < last_index && id.0 + 1 != successor.0 {
-                        cfg.successors[id.0].push(BlockId(id.0 + 1));
-                        cfg.predecessors[id.0 + 1].push(id.clone());
+                    if i < last_index && i + 1 != succ.0 {
+                        cfg.successors[i].push(BlockId(i + 1));
+                        cfg.predecessors[i + 1].push(BlockId(i));
                     }
                 }
 
                 Some(Instruction::Goto(label)) => {
-                    let successor = &id_map[label];
-                    cfg.successors[id.0].push(successor.clone());
-                    cfg.predecessors[successor.0].push(id.clone());
+                    let succ = id_map[label];
+                    cfg.successors[i].push(succ);
+                    cfg.predecessors[succ.0].push(BlockId(i));
                 }
 
                 Some(Instruction::Return)
@@ -709,9 +714,9 @@ impl ControlFlowGraph {
                 | Some(Instruction::TensorError(_)) => (),
 
                 Some(_) => {
-                    if id.0 < last_index {
-                        cfg.successors[id.0].push(BlockId(id.0 + 1));
-                        cfg.predecessors[id.0 + 1].push(id.clone());
+                    if i < last_index {
+                        cfg.successors[i].push(BlockId(i + 1));
+                        cfg.predecessors[i + 1].push(BlockId(i));
                     }
                 }
 

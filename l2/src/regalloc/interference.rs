@@ -5,19 +5,19 @@ use crate::bitvector::BitVector;
 
 #[derive(Debug)]
 pub struct InterferenceGraph<'a> {
-    pub interner: &'a Interner<Value>,
     pub graph: Vec<BitVector>,
+    pub interner: &'a Interner<Value>,
 }
 
 impl<'a> InterferenceGraph<'a> {
     pub fn new(func: &Function, liveness: &'a LivenessResult) -> Self {
         let num_gp_variables = liveness.interner.len();
         let mut graph = Self {
-            interner: &liveness.interner,
             graph: vec![BitVector::new(num_gp_variables); num_gp_variables],
+            interner: &liveness.interner,
         };
 
-        let gp_registers: Vec<usize> = Register::GP_REGISTERS
+        let gp_registers: Vec<usize> = Register::gp_registers()
             .iter()
             .map(|&reg| liveness.interner[&Value::Register(reg)])
             .collect();
@@ -29,8 +29,8 @@ impl<'a> InterferenceGraph<'a> {
             }
         }
 
-        for block in &func.basic_blocks {
-            let mut live = liveness.out[block.id.0].clone();
+        for (i, block) in func.basic_blocks.iter().enumerate() {
+            let mut live = liveness.block_out[i].clone();
 
             for inst in block.instructions.iter().rev() {
                 match inst {

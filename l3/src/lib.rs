@@ -245,7 +245,7 @@ pub struct BasicBlock {
 impl DisplayResolved for BasicBlock {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         for inst in &self.instructions {
-            writeln!(f, "  {}", inst.resolved(interner))?;
+            writeln!(f, "\t{}", inst.resolved(interner))?;
         }
         Ok(())
     }

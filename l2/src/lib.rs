@@ -579,7 +579,7 @@ pub struct BasicBlock {
 impl DisplayResolved for BasicBlock {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         for inst in &self.instructions {
-            writeln!(f, "\t{}", inst.resolved(interner))?;
+            writeln!(f, "    {}", inst.resolved(interner))?;
         }
         Ok(())
     }
@@ -655,13 +655,13 @@ impl Function {
 
 impl DisplayResolved for Function {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
-        writeln!(f, "(@{}\n\t{}", interner.resolve(self.name.0), self.args)?;
+        writeln!(f, "  (@{} {}", interner.resolve(self.name.0), self.args)?;
 
         for block in &self.basic_blocks {
             write!(f, "{}", block.resolved(interner))?;
         }
 
-        writeln!(f, ")")
+        writeln!(f, "  )")
     }
 }
 
@@ -740,7 +740,7 @@ impl fmt::Display for Program {
         writeln!(f, "(@{}", self.entry_point)?;
 
         for func in &self.functions {
-            writeln!(f, "{}", func.resolved(&self.interner))?;
+            write!(f, "{}", func.resolved(&self.interner))?;
         }
 
         writeln!(f, ")")

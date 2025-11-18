@@ -17,9 +17,9 @@ pub struct ColoringResult<'a> {
 
 #[derive(Debug)]
 struct ColoringAllocator<'a, 'b> {
-    loops: &'a LoopForest,
     prev_spilled: &'b HashSet<Value>,
     num_defs_uses: Vec<Vec<u32>>,
+    loop_depths: Vec<u32>,
     live_across_calls: BitVector,
     interner: Interner<Instruction>,
 
@@ -49,7 +49,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         func: &Function,
         liveness: &LivenessResult,
         interference: &'a mut InterferenceGraph<'a>,
-        loops: &'a LoopForest,
+        loops: &LoopForest,
         prev_spilled: &'b HashSet<Value>,
     ) -> Self {
         let interner = func
@@ -73,11 +73,14 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         let num_moves = interner.len();
 
         let mut num_defs_uses = vec![vec![0; num_blocks]; num_nodes];
+        let mut loop_depths = vec![0; num_blocks];
         let mut live_across_calls = BitVector::new(num_nodes);
         let mut worklist_moves = BitVector::new(num_moves);
         let mut move_list = vec![BitVector::new(num_moves); num_nodes];
 
         for (i, block) in func.basic_blocks.iter().enumerate() {
+            loop_depths[i] = 10u32.pow(loops.loop_depth(block.id));
+
             for (j, inst) in block.instructions.iter().enumerate() {
                 for var in inst.defs().into_iter().chain(inst.uses()) {
                     num_defs_uses[interference.interner[&var]][i] += 1;
@@ -118,9 +121,9 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
             .collect();
 
         let mut allocator = Self {
-            loops,
             prev_spilled,
             num_defs_uses,
+            loop_depths,
             live_across_calls,
             interner,
 
@@ -429,11 +432,11 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
                     .prev_spilled
                     .contains(self.interference.interner.resolve(n))
             })
-            .min_by_key(|&n| self.spill_cost(n))
+            .min_by(|&a, &b| self.spill_cost(a).total_cmp(&self.spill_cost(b)))
             .or_else(|| {
                 self.spill_worklist
                     .iter()
-                    .min_by_key(|&n| self.spill_cost(n))
+                    .min_by(|&a, &b| self.spill_cost(a).total_cmp(&self.spill_cost(b)))
             });
 
         if let Some(node) = candidate {
@@ -443,15 +446,14 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    fn spill_cost(&self, node: NodeId) -> u32 {
+    fn spill_cost(&self, node: NodeId) -> f64 {
         self.num_defs_uses[node]
             .iter()
             .enumerate()
-            .fold(0, |spill_cost, (id, num)| {
-                spill_cost
-                    + num * 10_u32.pow(self.loops.loop_depth(&BlockId(id)))
-                        / self.interference.degree(node)
+            .map(|(i, num)| {
+                (num * self.loop_depths[i]) as f64 / self.interference.degree(node) as f64
             })
+            .sum()
     }
 }
 

@@ -93,7 +93,7 @@ impl DominatorTree {
         }
     }
 
-    pub fn dominates(&self, u: &BlockId, v: &BlockId) -> bool {
+    pub fn dominates(&self, u: BlockId, v: BlockId) -> bool {
         self.preorder[u.0] <= self.preorder[v.0] && self.postorder[u.0] >= self.postorder[v.0]
     }
 }

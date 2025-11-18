@@ -76,7 +76,7 @@ impl BitVector {
     }
 
     pub fn count(&self) -> u32 {
-        self.vec.iter().fold(0, |acc, word| acc + word.count_ones())
+        self.vec.iter().map(|word| word.count_ones()).sum()
     }
 
     pub fn intersection(&mut self, other: &Self) {

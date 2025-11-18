@@ -18,13 +18,13 @@ impl LoopForest {
         let num_blocks = func.basic_blocks.len();
 
         let back_edges = func.basic_blocks.iter().flat_map(|block| {
-            let latch = &block.id;
+            let latch = block.id;
             cfg.successors[latch.0]
                 .iter()
-                .filter_map(move |header| dt.dominates(header, latch).then_some((latch, header)))
+                .filter_map(move |&header| dt.dominates(header, latch).then_some((latch, header)))
         });
 
-        let natural_loops = back_edges.map(|(&latch, &header)| {
+        let natural_loops = back_edges.map(|(latch, header)| {
             let mut stack = vec![latch];
             let mut loop_blocks = BitVector::new(num_blocks);
             loop_blocks.set(header.0);
@@ -73,10 +73,10 @@ impl LoopForest {
                 });
 
             let (first, second) = merged_loops.split_at_mut(i + 1);
-            let loop_header = &first[i].header;
+            let loop_header = first[i].header;
 
             let parent = second.iter_mut().find(|other| {
-                dt.dominates(&other.header, loop_header) && other.basic_blocks.contains(loop_header)
+                dt.dominates(other.header, loop_header) && other.basic_blocks.contains(&loop_header)
             });
 
             match parent {
@@ -100,8 +100,8 @@ impl LoopForest {
         }
     }
 
-    pub fn loop_depth(&self, block: &BlockId) -> u32 {
-        match self.block_map.get(block) {
+    pub fn loop_depth(&self, block: BlockId) -> u32 {
+        match self.block_map.get(&block) {
             Some(&loop_id) => self.loops[loop_id].depth,
             None => 0,
         }

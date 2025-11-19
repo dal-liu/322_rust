@@ -606,6 +606,7 @@ impl Function {
 
         for inst in instructions {
             let block = basic_blocks.last_mut().unwrap();
+
             match inst {
                 Instruction::CJump { .. }
                 | Instruction::Goto(_)
@@ -634,12 +635,7 @@ impl Function {
             }
         }
 
-        if basic_blocks
-            .last()
-            .map_or(false, |block| block.instructions.is_empty())
-        {
-            basic_blocks.pop();
-        }
+        basic_blocks.retain(|block| !block.instructions.is_empty());
 
         let cfg = ControlFlowGraph::new(&basic_blocks);
 
@@ -695,18 +691,18 @@ impl ControlFlowGraph {
                 Some(Instruction::CJump { label, .. }) => {
                     let succ = id_map[label];
                     cfg.successors[i].push(succ);
-                    cfg.predecessors[succ.0].push(BlockId(i));
+                    cfg.predecessors[succ.0].push(block.id);
 
                     if i < last_index && i + 1 != succ.0 {
                         cfg.successors[i].push(BlockId(i + 1));
-                        cfg.predecessors[i + 1].push(BlockId(i));
+                        cfg.predecessors[i + 1].push(block.id);
                     }
                 }
 
                 Some(Instruction::Goto(label)) => {
                     let succ = id_map[label];
                     cfg.successors[i].push(succ);
-                    cfg.predecessors[succ.0].push(BlockId(i));
+                    cfg.predecessors[succ.0].push(block.id);
                 }
 
                 Some(Instruction::Return)
@@ -716,7 +712,7 @@ impl ControlFlowGraph {
                 Some(_) => {
                     if i < last_index {
                         cfg.successors[i].push(BlockId(i + 1));
-                        cfg.predecessors[i + 1].push(BlockId(i));
+                        cfg.predecessors[i + 1].push(block.id);
                     }
                 }
 

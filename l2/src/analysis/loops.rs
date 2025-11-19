@@ -8,7 +8,7 @@ pub type LoopId = usize;
 
 #[derive(Debug)]
 pub struct LoopForest {
-    pub loops: Vec<Loop>,
+    pub arena: Vec<Loop>,
     pub block_map: HashMap<BlockId, LoopId>,
 }
 
@@ -95,14 +95,14 @@ impl LoopForest {
         }
 
         Self {
-            loops: merged_loops,
+            arena: merged_loops,
             block_map,
         }
     }
 
     pub fn loop_depth(&self, block: BlockId) -> u32 {
         match self.block_map.get(&block) {
-            Some(&loop_id) => self.loops[loop_id].depth,
+            Some(&loop_id) => self.arena[loop_id].depth,
             None => 0,
         }
     }

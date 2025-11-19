@@ -1,3 +1,4 @@
+mod isel;
 mod parser;
 
 use clap::Parser;

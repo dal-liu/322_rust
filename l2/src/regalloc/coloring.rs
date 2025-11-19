@@ -6,12 +6,12 @@ use crate::analysis::{LivenessResult, LoopForest};
 use crate::bitvector::BitVector;
 use crate::regalloc::interference::InterferenceGraph;
 
-pub type NodeId = usize;
+pub type ValueId = usize;
 
 #[derive(Debug)]
 pub struct ColoringResult<'a> {
-    pub color: HashMap<NodeId, NodeId>,
-    pub spill_nodes: BTreeSet<NodeId>,
+    pub color: HashMap<ValueId, ValueId>,
+    pub spill_nodes: BTreeSet<ValueId>,
     pub interner: &'a Interner<Value>,
 }
 
@@ -23,14 +23,14 @@ struct ColoringAllocator<'a, 'b> {
     live_across_calls: BitVector,
     interner: Interner<Instruction>,
 
-    precolored: Vec<NodeId>,
+    precolored: Vec<ValueId>,
     simplify_worklist: BitVector,
     freeze_worklist: BitVector,
     spill_worklist: BitVector,
-    spill_nodes: BTreeSet<NodeId>,
+    spill_nodes: BTreeSet<ValueId>,
     coalesced_nodes: BitVector,
     colored_nodes: BitVector,
-    select_stack: Vec<NodeId>,
+    select_stack: Vec<ValueId>,
 
     coalesced_moves: BitVector,
     constrained_moves: BitVector,
@@ -40,8 +40,8 @@ struct ColoringAllocator<'a, 'b> {
 
     interference: &'a mut InterferenceGraph<'a>,
     move_list: Vec<BitVector>,
-    alias: Vec<NodeId>,
-    color: HashMap<NodeId, NodeId>,
+    alias: Vec<ValueId>,
+    color: HashMap<ValueId, ValueId>,
 }
 
 impl<'a, 'b> ColoringAllocator<'a, 'b> {
@@ -108,7 +108,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
             }
         }
 
-        let precolored: Vec<NodeId> = Register::gp_registers()
+        let precolored: Vec<ValueId> = Register::gp_registers()
             .iter()
             .map(|&reg| interference.interner[&Value::Register(reg)])
             .collect();
@@ -184,7 +184,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         colored_nodes.set_from(self.precolored.iter().copied());
 
         while let Some(u) = self.select_stack.pop() {
-            let mut ok_colors: Vec<NodeId> = if self.live_across_calls.test(u) {
+            let mut ok_colors: Vec<ValueId> = if self.live_across_calls.test(u) {
                 Register::CALLEE_SAVED
                     .iter()
                     .chain(Register::CALLER_SAVED.iter())
@@ -221,13 +221,13 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    fn add_edge(&mut self, u: NodeId, v: NodeId) {
+    fn add_edge(&mut self, u: ValueId, v: ValueId) {
         if u != v {
             self.interference.add_edge(u, v);
         }
     }
 
-    fn adjacent(&self, node: NodeId) -> Vec<NodeId> {
+    fn adjacent(&self, node: ValueId) -> Vec<ValueId> {
         let mut select = BitVector::new(self.interference.graph.len());
         select.set_from(self.select_stack.iter().copied());
         select.union(&self.coalesced_nodes);
@@ -237,14 +237,14 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         adjacent.iter().collect()
     }
 
-    fn node_moves(&self, node: NodeId) -> Vec<NodeId> {
+    fn node_moves(&self, node: ValueId) -> Vec<ValueId> {
         let mut node_moves = self.active_moves.clone();
         node_moves.union(&self.worklist_moves);
         node_moves.intersection(&self.move_list[node]);
         node_moves.iter().collect()
     }
 
-    fn is_move_related(&self, node: NodeId) -> bool {
+    fn is_move_related(&self, node: ValueId) -> bool {
         self.move_list[node].any()
     }
 
@@ -259,9 +259,9 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    fn decrement_degree(&mut self, node: NodeId) {
+    fn decrement_degree(&mut self, node: ValueId) {
         if self.interference.degree(node) == Register::NUM_GP_REGISTERS {
-            let nodes: Vec<NodeId> = iter::once(node)
+            let nodes: Vec<ValueId> = iter::once(node)
                 .chain(&self.interference.graph[node])
                 .collect();
             self.enable_moves(&nodes);
@@ -275,7 +275,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    fn enable_moves(&mut self, nodes: &[NodeId]) {
+    fn enable_moves(&mut self, nodes: &[ValueId]) {
         for &node in nodes {
             for move_ in self.node_moves(node) {
                 if self.active_moves.test(move_) {
@@ -322,7 +322,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    fn add_worklist(&mut self, node: NodeId) {
+    fn add_worklist(&mut self, node: ValueId) {
         if !self.precolored.contains(&node)
             && !self.is_move_related(node)
             && self.interference.degree(node) < Register::NUM_GP_REGISTERS
@@ -332,7 +332,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    fn can_coalesce_george(&self, u: NodeId, v: NodeId) -> bool {
+    fn can_coalesce_george(&self, u: ValueId, v: ValueId) -> bool {
         self.adjacent(v).iter().all(|&n| {
             self.interference.degree(n) < Register::NUM_GP_REGISTERS
                 || self.precolored.contains(&n)
@@ -340,7 +340,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         })
     }
 
-    fn can_coalesce_briggs(&self, u: NodeId, v: NodeId) -> bool {
+    fn can_coalesce_briggs(&self, u: ValueId, v: ValueId) -> bool {
         let mut nodes = BitVector::new(self.interference.interner.len());
         nodes.set_from(self.adjacent(u).into_iter());
         nodes.set_from(self.adjacent(v).into_iter());
@@ -354,7 +354,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         return k < Register::NUM_GP_REGISTERS;
     }
 
-    fn get_alias(&self, node: NodeId) -> NodeId {
+    fn get_alias(&self, node: ValueId) -> ValueId {
         if self.coalesced_nodes.test(node) {
             self.get_alias(self.alias[node])
         } else {
@@ -362,7 +362,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    fn combine(&mut self, u: NodeId, v: NodeId) {
+    fn combine(&mut self, u: ValueId, v: ValueId) {
         if self.freeze_worklist.test(v) {
             self.freeze_worklist.reset(v);
         } else {
@@ -395,7 +395,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    fn freeze_moves(&mut self, u: NodeId) {
+    fn freeze_moves(&mut self, u: ValueId) {
         let value_interner = self.interference.interner;
 
         for move_ in self.node_moves(u) {
@@ -446,7 +446,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    fn spill_cost(&self, node: NodeId) -> f64 {
+    fn spill_cost(&self, node: ValueId) -> f64 {
         self.num_defs_uses[node]
             .iter()
             .enumerate()

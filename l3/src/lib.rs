@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
+use std::iter;
 use std::ops::Index;
 
 pub trait DisplayResolved {
@@ -51,7 +52,7 @@ impl DisplayResolved for Callee {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Value {
     Number(i64),
     Label(SymbolId),
@@ -70,7 +71,7 @@ impl DisplayResolved for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct SymbolId(pub usize);
 
 #[derive(Debug, Clone)]
@@ -164,6 +165,97 @@ pub enum Instruction {
     },
 }
 
+impl Instruction {
+    pub fn defs(&self) -> Vec<SymbolId> {
+        use Instruction::*;
+
+        match self {
+            Assign { dst, .. }
+            | Binary { dst, .. }
+            | Compare { dst, .. }
+            | Load { dst, .. }
+            | CallResult { dst, .. } => vec![*dst],
+
+            Store { .. }
+            | Return
+            | ReturnValue(_)
+            | Label(_)
+            | Branch(_)
+            | BranchCond { .. }
+            | Call { .. } => Vec::new(),
+        }
+    }
+
+    pub fn uses(&self) -> Vec<SymbolId> {
+        use Instruction::*;
+
+        match self {
+            Assign { src, .. } => {
+                if let Value::Variable(id) = src {
+                    vec![*id]
+                } else {
+                    vec![]
+                }
+            }
+
+            Binary { lhs, rhs, .. } | Compare { lhs, rhs, .. } => [lhs, rhs]
+                .into_iter()
+                .filter_map(|&val| {
+                    if let Value::Variable(id) = val {
+                        Some(id)
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+
+            Load { src, .. } => vec![*src],
+
+            Store { dst, src } => iter::once(*dst)
+                .chain(if let Value::Variable(id) = src {
+                    Some(*id)
+                } else {
+                    None
+                })
+                .collect(),
+
+            Return | Label(_) | Branch(_) => Vec::new(),
+
+            ReturnValue(val) => {
+                if let Value::Variable(id) = val {
+                    vec![*id]
+                } else {
+                    vec![]
+                }
+            }
+
+            BranchCond { cond, .. } => {
+                if let Value::Variable(id) = cond {
+                    vec![*id]
+                } else {
+                    vec![]
+                }
+            }
+
+            Call { callee, args } | CallResult { callee, args, .. } => args
+                .iter()
+                .filter_map(|arg| {
+                    if let Value::Variable(id) = arg {
+                        Some(*id)
+                    } else {
+                        None
+                    }
+                })
+                .chain(if let Callee::Value(Value::Variable(id)) = callee {
+                    Some(*id)
+                } else {
+                    None
+                })
+                .collect(),
+        }
+    }
+}
+
 impl DisplayResolved for Instruction {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         use Instruction::*;
@@ -251,7 +343,7 @@ impl DisplayResolved for BasicBlock {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct BlockId(pub usize);
 
 #[derive(Debug)]
@@ -271,6 +363,7 @@ impl Function {
 
         for inst in instructions {
             let block = basic_blocks.last_mut().unwrap();
+
             match inst {
                 Instruction::Return
                 | Instruction::ReturnValue(_)
@@ -349,7 +442,7 @@ impl ControlFlowGraph {
             .iter()
             .filter_map(|block| {
                 block.instructions.first().and_then(|inst| match inst {
-                    Instruction::Label(label) => Some((label.clone(), block.id.clone())),
+                    Instruction::Label(label) => Some((*label, block.id)),
                     _ => None,
                 })
             })
@@ -362,33 +455,31 @@ impl ControlFlowGraph {
         };
         let last_index = num_blocks.saturating_sub(1);
 
-        for block in basic_blocks {
-            let id = &block.id;
-
+        for (i, block) in basic_blocks.iter().enumerate() {
             match block.instructions.last() {
                 Some(Instruction::BranchCond { label, .. }) => {
-                    let successor = &id_map[label];
-                    cfg.successors[id.0].push(successor.clone());
-                    cfg.predecessors[successor.0].push(id.clone());
+                    let succ = id_map[label];
+                    cfg.successors[i].push(succ);
+                    cfg.predecessors[succ.0].push(block.id);
 
-                    if id.0 < last_index && id.0 + 1 != successor.0 {
-                        cfg.successors[id.0].push(BlockId(id.0 + 1));
-                        cfg.predecessors[id.0 + 1].push(id.clone());
+                    if i < last_index && i + 1 != succ.0 {
+                        cfg.successors[i].push(BlockId(i + 1));
+                        cfg.predecessors[i].push(block.id);
                     }
                 }
 
                 Some(Instruction::Branch(label)) => {
-                    let successor = &id_map[label];
-                    cfg.successors[id.0].push(successor.clone());
-                    cfg.predecessors[successor.0].push(id.clone());
+                    let succ = id_map[label];
+                    cfg.successors[i].push(succ);
+                    cfg.predecessors[succ.0].push(block.id);
                 }
 
                 Some(Instruction::Return) | Some(Instruction::ReturnValue(_)) => (),
 
                 Some(_) => {
-                    if id.0 < last_index {
-                        cfg.successors[id.0].push(BlockId(id.0 + 1));
-                        cfg.predecessors[id.0 + 1].push(id.clone());
+                    if i < last_index {
+                        cfg.successors[i].push(BlockId(i + 1));
+                        cfg.predecessors[i + 1].push(block.id);
                     }
                 }
 

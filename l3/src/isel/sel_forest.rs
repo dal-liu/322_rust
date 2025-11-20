@@ -259,9 +259,6 @@ impl SelectionForest {
     }
 }
 
-pub fn generate_trees(contexts: &[Context]) -> Vec<SelectionForest> {
-    contexts
-        .iter()
-        .map(|ctx| SelectionForest::new(ctx))
-        .collect()
+pub fn generate_forests(contexts: &[Context]) -> Vec<SelectionForest> {
+    contexts.iter().map(SelectionForest::new).collect()
 }

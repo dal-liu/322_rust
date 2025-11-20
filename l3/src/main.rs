@@ -3,7 +3,7 @@ mod parser;
 
 use clap::Parser;
 
-use crate::isel::{create_contexts, generate_trees};
+use crate::isel::{create_contexts, generate_forests};
 use crate::parser::parse_file;
 
 #[derive(Parser)]
@@ -26,8 +26,8 @@ fn main() {
 
         for func in &prog.functions {
             let contexts = create_contexts(func);
-            let trees = generate_trees(&contexts);
-            dbg!(&trees);
+            let forest = generate_forests(&contexts);
+            dbg!(&forest);
         }
     }
 }

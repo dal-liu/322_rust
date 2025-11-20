@@ -1,7 +1,8 @@
+use std::fs;
+
 use ariadne::{Color, Label, Report, ReportKind, sources};
 use chumsky::prelude::*;
 use l1::*;
-use std::fs;
 
 type MyExtra<'src> = extra::Err<Rich<'src, char>>;
 

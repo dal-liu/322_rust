@@ -1,5 +1,6 @@
-use l2::*;
 use std::collections::HashMap;
+
+use l2::*;
 
 use crate::analysis::dominators::DominatorTree;
 use crate::bitvector::BitVector;
@@ -8,7 +9,7 @@ pub type LoopId = usize;
 
 #[derive(Debug)]
 pub struct LoopForest {
-    pub arena: Vec<Loop>,
+    pub merged_loops: Vec<Loop>,
     pub block_map: HashMap<BlockId, LoopId>,
 }
 
@@ -95,14 +96,14 @@ impl LoopForest {
         }
 
         Self {
-            arena: merged_loops,
+            merged_loops,
             block_map,
         }
     }
 
     pub fn loop_depth(&self, block: BlockId) -> u32 {
         match self.block_map.get(&block) {
-            Some(&loop_id) => self.arena[loop_id].depth,
+            Some(&loop_id) => self.merged_loops[loop_id].depth,
             None => 0,
         }
     }

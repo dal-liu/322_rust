@@ -1,5 +1,6 @@
-use l2::*;
 use std::mem;
+
+use l2::*;
 
 pub fn spill(
     func: &mut Function,

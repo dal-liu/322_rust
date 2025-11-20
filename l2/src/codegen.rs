@@ -1,6 +1,7 @@
-use l2::*;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
+
+use l2::*;
 
 use crate::translation::translate_program;
 

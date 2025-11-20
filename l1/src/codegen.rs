@@ -1,6 +1,7 @@
-use l1::*;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
+
+use l1::*;
 
 struct CodeGenerator {
     stream: BufWriter<File>,

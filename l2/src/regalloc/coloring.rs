@@ -1,6 +1,7 @@
-use l2::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
+
+use l2::*;
 
 use crate::analysis::{LivenessResult, LoopForest};
 use crate::bitvector::BitVector;

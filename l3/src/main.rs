@@ -1,8 +1,11 @@
+mod analysis;
 mod isel;
 mod parser;
 
 use clap::Parser;
+use common::DisplayResolved;
 
+use crate::analysis::{compute_liveness, compute_reaching_def};
 use crate::isel::{create_contexts, generate_forests};
 use crate::parser::parse_file;
 
@@ -25,9 +28,8 @@ fn main() {
         }
 
         for func in &prog.functions {
-            let contexts = create_contexts(func);
-            let forest = generate_forests(&contexts);
-            dbg!(&forest);
+            println!("{}", func.name.resolved(&prog.interner));
+            println!("{}", compute_liveness(func).resolved(&prog.interner));
         }
     }
 }

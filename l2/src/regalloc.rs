@@ -4,6 +4,7 @@ mod spilling;
 
 use std::collections::HashSet;
 
+use common::Interner;
 use l2::*;
 
 use crate::analysis::{compute_dominators, compute_liveness, compute_loops};

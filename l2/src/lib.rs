@@ -1,32 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::hash::Hash;
-use std::ops::Index;
 
-pub trait DisplayResolved {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result;
-
-    fn resolved<'a>(&'a self, interner: &'a Interner<String>) -> DisplayResolvedWrapper<'a, Self>
-    where
-        Self: Sized,
-    {
-        DisplayResolvedWrapper {
-            inner: self,
-            interner,
-        }
-    }
-}
-
-pub struct DisplayResolvedWrapper<'a, T: ?Sized> {
-    inner: &'a T,
-    interner: &'a Interner<String>,
-}
-
-impl<'a, T: DisplayResolved + ?Sized> fmt::Display for DisplayResolvedWrapper<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.inner.fmt_with(f, self.interner)
-    }
-}
+use common::{DisplayResolved, Interner};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Register {
@@ -268,6 +243,33 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    pub fn defs(&self) -> Vec<Value> {
+        use Instruction::*;
+        use Register::*;
+
+        match self {
+            Assign { dst, .. }
+            | Load { dst, .. }
+            | StackArg { dst, .. }
+            | Arithmetic { dst, .. }
+            | Shift { dst, .. }
+            | LoadArithmetic { dst, .. }
+            | Compare { dst, .. }
+            | LEA { dst, .. } => vec![*dst],
+
+            Store { .. } | StoreArithmetic { .. } | CJump { .. } | Label(_) | Goto(_) | Return => {
+                Vec::new()
+            }
+
+            Call { .. } | Print | Input | Allocate | TupleError | TensorError(_) => {
+                let caller_save = [R10, R11, R8, R9, RAX, RCX, RDI, RDX, RSI];
+                caller_save.into_iter().map(Value::Register).collect()
+            }
+
+            Increment(val) | Decrement(val) => vec![*val],
+        }
+    }
+
     pub fn uses(&self) -> Vec<Value> {
         use Instruction::*;
         use Register::*;
@@ -357,33 +359,6 @@ impl Instruction {
             Increment(val) | Decrement(val) => vec![*val],
 
             LEA { src, offset, .. } => vec![*src, *offset],
-        }
-    }
-
-    pub fn defs(&self) -> Vec<Value> {
-        use Instruction::*;
-        use Register::*;
-
-        match self {
-            Assign { dst, .. }
-            | Load { dst, .. }
-            | StackArg { dst, .. }
-            | Arithmetic { dst, .. }
-            | Shift { dst, .. }
-            | LoadArithmetic { dst, .. }
-            | Compare { dst, .. }
-            | LEA { dst, .. } => vec![*dst],
-
-            Store { .. } | StoreArithmetic { .. } | CJump { .. } | Label(_) | Goto(_) | Return => {
-                Vec::new()
-            }
-
-            Call { .. } | Print | Input | Allocate | TupleError | TensorError(_) => {
-                let caller_save = [R10, R11, R8, R9, RAX, RCX, RDI, RDX, RSI];
-                caller_save.into_iter().map(Value::Register).collect()
-            }
-
-            Increment(val) | Decrement(val) => vec![*val],
         }
     }
 
@@ -740,44 +715,5 @@ impl fmt::Display for Program {
         }
 
         writeln!(f, ")")
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Interner<T> {
-    map: HashMap<T, usize>,
-    vec: Vec<T>,
-}
-
-impl<T: Clone + Eq + Hash> Interner<T> {
-    pub fn new() -> Self {
-        Self {
-            map: HashMap::new(),
-            vec: Vec::new(),
-        }
-    }
-
-    pub fn intern(&mut self, item: T) -> usize {
-        *self.map.entry(item).or_insert_with_key(|key| {
-            let index = self.vec.len();
-            self.vec.push(key.clone());
-            index
-        })
-    }
-
-    pub fn resolve(&self, index: usize) -> &T {
-        &self.vec[index]
-    }
-
-    pub fn len(&self) -> usize {
-        self.vec.len()
-    }
-}
-
-impl<T: Eq + Hash> Index<&T> for Interner<T> {
-    type Output = usize;
-
-    fn index(&self, index: &T) -> &Self::Output {
-        &self.map[index]
     }
 }

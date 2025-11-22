@@ -1,7 +1,9 @@
+use std::fmt;
+
+use common::{BitVector, DisplayResolved, Interner};
 use l2::*;
 
 use crate::analysis::LivenessResult;
-use crate::bitvector::BitVector;
 
 #[derive(Debug)]
 pub struct InterferenceGraph<'a> {
@@ -83,6 +85,28 @@ impl<'a> InterferenceGraph<'a> {
 
     pub fn degree(&self, node: usize) -> u32 {
         self.graph[node].count()
+    }
+}
+
+impl DisplayResolved for InterferenceGraph<'_> {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
+        let mut lines: Vec<String> = (0..self.graph.len())
+            .into_iter()
+            .map(|i| {
+                let mut line: Vec<String> = self.graph[i]
+                    .iter()
+                    .map(|j| self.interner.resolve(j).resolved(interner).to_string())
+                    .collect();
+                line.sort();
+                format!(
+                    "{} {}",
+                    self.interner.resolve(i).resolved(interner),
+                    line.join(" ")
+                )
+            })
+            .collect();
+        lines.sort();
+        writeln!(f, "{}", lines.join("\n"))
     }
 }
 

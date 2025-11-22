@@ -1,7 +1,5 @@
+use common::{BitVector, Worklist};
 use l2::*;
-
-use crate::analysis::worklist::Worklist;
-use crate::bitvector::BitVector;
 
 #[derive(Debug)]
 pub struct DominatorTree {
@@ -12,7 +10,6 @@ pub struct DominatorTree {
 impl DominatorTree {
     pub fn new(func: &Function) -> Self {
         let num_blocks = func.basic_blocks.len();
-        let cfg = &func.cfg;
         let entry_id = BlockId(0);
 
         let mut sdom = vec![BitVector::new(num_blocks); num_blocks];
@@ -29,7 +26,7 @@ impl DominatorTree {
 
             if i != entry_id.0 {
                 temp.set_from(0..num_blocks);
-                for pred in &cfg.predecessors[i] {
+                for pred in &func.cfg.predecessors[i] {
                     temp.intersection(&sdom[pred.0]);
                 }
             }
@@ -38,7 +35,7 @@ impl DominatorTree {
 
             if temp != sdom[i] {
                 sdom[i] = temp;
-                worklist.extend(cfg.successors[i].iter().copied());
+                worklist.extend(func.cfg.successors[i].iter().copied());
             }
         }
 

@@ -1,3 +1,4 @@
+use common::Interner;
 use l1;
 use l2::*;
 

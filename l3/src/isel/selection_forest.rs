@@ -214,8 +214,6 @@ impl SelectionForest {
                     forest.add_root(ret_node);
                 }
 
-                Label(_) => (),
-
                 Branch(_) => {
                     let br_node = forest.alloc(SFNode {
                         kind: NodeKind::Op(OpKind::Br),
@@ -239,9 +237,7 @@ impl SelectionForest {
                     forest.add_root(br_node);
                 }
 
-                Call { .. } => (),
-
-                CallResult { .. } => (),
+                Label(_) | Call { .. } | CallResult { .. } => panic!("illegal context instruction"),
             }
         }
 

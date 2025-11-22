@@ -1,5 +1,4 @@
 mod analysis;
-mod bitvector;
 mod codegen;
 mod optimization;
 mod parser;

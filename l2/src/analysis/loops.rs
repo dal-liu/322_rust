@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
+use common::BitVector;
 use l2::*;
 
 use crate::analysis::dominators::DominatorTree;
-use crate::bitvector::BitVector;
 
 pub type LoopId = usize;
 
@@ -15,12 +15,11 @@ pub struct LoopForest {
 
 impl LoopForest {
     pub fn new(func: &Function, dt: &DominatorTree) -> Self {
-        let cfg = &func.cfg;
         let num_blocks = func.basic_blocks.len();
 
         let back_edges = func.basic_blocks.iter().flat_map(|block| {
             let latch = block.id;
-            cfg.successors[latch.0]
+            func.cfg.successors[latch.0]
                 .iter()
                 .filter_map(move |&header| dt.dominates(header, latch).then_some((latch, header)))
         });
@@ -34,7 +33,7 @@ impl LoopForest {
                 let i = id.0;
                 if !loop_blocks.test(i) {
                     loop_blocks.set(i);
-                    stack.extend(cfg.predecessors[i].iter().copied());
+                    stack.extend(func.cfg.predecessors[i].iter().copied());
                 }
             }
 

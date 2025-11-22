@@ -2,34 +2,10 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
 use std::iter;
-use std::ops::Index;
 
-pub trait DisplayResolved {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result;
+use common::{DisplayResolved, Interner};
 
-    fn resolved<'a>(&'a self, interner: &'a Interner<String>) -> DisplayResolvedWrapper<'a, Self>
-    where
-        Self: Sized,
-    {
-        DisplayResolvedWrapper {
-            inner: self,
-            interner,
-        }
-    }
-}
-
-pub struct DisplayResolvedWrapper<'a, T: ?Sized> {
-    inner: &'a T,
-    interner: &'a Interner<String>,
-}
-
-impl<'a, T: DisplayResolved + ?Sized> fmt::Display for DisplayResolvedWrapper<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.inner.fmt_with(f, self.interner)
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Callee {
     Value(Value),
     Print,
@@ -52,7 +28,7 @@ impl DisplayResolved for Callee {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Value {
     Number(i64),
     Label(SymbolId),
@@ -74,7 +50,13 @@ impl DisplayResolved for Value {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct SymbolId(pub usize);
 
-#[derive(Debug, Clone)]
+impl DisplayResolved for SymbolId {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
+        write!(f, "{}", interner.resolve(self.0))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -98,7 +80,7 @@ impl fmt::Display for BinaryOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CompareOp {
     Lt,
     Le,
@@ -120,7 +102,7 @@ impl fmt::Display for CompareOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Instruction {
     Assign {
         dst: SymbolId,
@@ -166,7 +148,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn defs(&self) -> Vec<SymbolId> {
+    pub fn def(&self) -> Option<SymbolId> {
         use Instruction::*;
 
         match self {
@@ -174,7 +156,7 @@ impl Instruction {
             | Binary { dst, .. }
             | Compare { dst, .. }
             | Load { dst, .. }
-            | CallResult { dst, .. } => vec![*dst],
+            | CallResult { dst, .. } => Some(*dst),
 
             Store { .. }
             | Return
@@ -182,7 +164,7 @@ impl Instruction {
             | Label(_)
             | Branch(_)
             | BranchCond { .. }
-            | Call { .. } => Vec::new(),
+            | Call { .. } => None,
         }
     }
 
@@ -503,44 +485,5 @@ impl fmt::Display for Program {
             writeln!(f, "{}", func.resolved(&self.interner))?;
         }
         Ok(())
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Interner<T> {
-    map: HashMap<T, usize>,
-    vec: Vec<T>,
-}
-
-impl<T: Clone + Eq + Hash> Interner<T> {
-    pub fn new() -> Self {
-        Self {
-            map: HashMap::new(),
-            vec: Vec::new(),
-        }
-    }
-
-    pub fn intern(&mut self, item: T) -> usize {
-        *self.map.entry(item).or_insert_with_key(|key| {
-            let index = self.vec.len();
-            self.vec.push(key.clone());
-            index
-        })
-    }
-
-    pub fn resolve(&self, index: usize) -> &T {
-        &self.vec[index]
-    }
-
-    pub fn len(&self) -> usize {
-        self.vec.len()
-    }
-}
-
-impl<T: Eq + Hash> Index<&T> for Interner<T> {
-    type Output = usize;
-
-    fn index(&self, index: &T) -> &Self::Output {
-        &self.map[index]
     }
 }

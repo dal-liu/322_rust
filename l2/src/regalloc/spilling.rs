@@ -1,5 +1,6 @@
 use std::mem;
 
+use common::Interner;
 use l2::*;
 
 pub fn spill(

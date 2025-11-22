@@ -5,7 +5,7 @@ pub struct Context<'a> {
     pub instructions: Vec<&'a Instruction>,
 }
 
-pub fn create_contexts(func: &Function) -> Vec<Context> {
+pub fn create_contexts<'a>(func: &'a Function) -> Vec<Context<'a>> {
     let mut contexts = vec![Context {
         instructions: Vec::new(),
     }];

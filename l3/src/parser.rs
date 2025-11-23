@@ -111,10 +111,10 @@ fn binary_op<'src>() -> impl Parser<'src, &'src str, BinaryOp, MyExtra<'src>> {
 
 fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp, MyExtra<'src>> {
     choice((
-        just('<').to(CompareOp::Lt),
         just("<=").to(CompareOp::Le),
-        just('=').to(CompareOp::Eq),
         just(">=").to(CompareOp::Ge),
+        just('<').to(CompareOp::Lt),
+        just('=').to(CompareOp::Eq),
         just('>').to(CompareOp::Gt),
     ))
     .padded_by(separators())

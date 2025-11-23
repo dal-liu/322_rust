@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use common::{BitVector, Interner};
+use common::{BitVector, DisplayResolved, Interner};
 use l3::*;
 
 use crate::analysis::dataflow::{Dataflow, Direction, solve};
@@ -8,66 +8,31 @@ use crate::analysis::dataflow::{Dataflow, Direction, solve};
 type InstId = usize;
 
 #[derive(Debug)]
-pub struct ReachingDefResult {
+pub struct ReachingDefResult<'a> {
+    pub func: &'a Function,
     pub interner: Interner<Instruction>,
     pub in_: Vec<Vec<BitVector>>,
 }
 
-pub fn compute_reaching_def(func: &mut Function) -> ReachingDefResult {
-    let dummy = BasicBlock {
-        id: BlockId(func.basic_blocks.len()),
-        instructions: func
-            .params
-            .iter()
-            .map(|&param| Instruction::Assign {
-                dst: param,
-                src: Value::Variable(param),
-            })
-            .collect(),
-    };
+impl<'a> DisplayResolved for ReachingDefResult<'a> {
+    fn fmt_with(
+        &self,
+        f: &mut std::fmt::Formatter,
+        interner: &Interner<String>,
+    ) -> std::fmt::Result {
+        writeln!(f, "Function \"{}\"", self.func.name.resolved(interner))?;
 
-    func.cfg.predecessors[0].push(dummy.id);
-    func.cfg.successors.push(vec![BlockId(0)]);
-    func.basic_blocks.push(dummy);
-
-    let reaching_def = ReachingDefAnalysis::new(func);
-    let block_in = solve(func, &reaching_def);
-
-    let empty_dataflow_set = || -> Vec<Vec<BitVector>> {
-        func.basic_blocks
-            .iter()
-            .map(|block| {
-                vec![BitVector::new(reaching_def.interner.len()); block.instructions.len()]
-            })
-            .collect()
-    };
-
-    let mut inst_in = empty_dataflow_set();
-    let mut inst_out = empty_dataflow_set();
-
-    for (i, block) in func.basic_blocks.iter().enumerate() {
-        for (j, inst) in block.instructions.iter().enumerate().rev() {
-            inst_in[i][j] = if j == 0 {
-                block_in[i].clone()
-            } else {
-                inst_out[i][j - 1].clone()
-            };
-
-            inst_out[i][j] = inst_in[i][j].clone();
-            if let Some(def) = inst.def() {
-                inst_out[i][j].reset_from(reaching_def.def_table[&def].iter().copied());
-                inst_out[i][j].set(j);
+        for (i, block) in self.func.basic_blocks.iter().enumerate() {
+            for (j, inst) in block.instructions.iter().enumerate() {
+                writeln!(f, "INSTRUCTION: {}\nIN\n{{", inst.resolved(interner))?;
+                for k in &self.in_[i][j] {
+                    writeln!(f, "{}", self.interner.resolve(k).resolved(interner))?;
+                }
+                writeln!(f, "}}")?;
             }
         }
-    }
 
-    func.basic_blocks.pop();
-    func.cfg.successors.pop();
-    func.cfg.predecessors[0].pop();
-
-    ReachingDefResult {
-        interner: reaching_def.interner,
-        in_: inst_in,
+        Ok(())
     }
 }
 
@@ -85,12 +50,12 @@ impl ReachingDefAnalysis {
             .basic_blocks
             .iter()
             .flat_map(|block| &block.instructions)
-            .filter(|inst| inst.def().is_some())
+            .filter(|inst| inst.defs().is_some())
             .fold(
                 (Interner::new(), HashMap::new()),
                 |(mut interner, mut def_table), inst| {
                     let index = interner.intern(inst.clone());
-                    if let Some(def) = inst.def() {
+                    if let Some(def) = inst.defs() {
                         def_table.entry(def).or_insert(Vec::new()).push(index);
                     }
                     (interner, def_table)
@@ -107,14 +72,13 @@ impl ReachingDefAnalysis {
                 .instructions
                 .iter()
                 .rev()
-                .filter(|inst| inst.def().is_some())
-                .for_each(|inst| {
+                .filter_map(|inst| inst.defs().and_then(|def| Some((inst, def))))
+                .for_each(|(inst, def)| {
                     let j = interner[inst];
                     if !block_kill[i].test(j) {
                         block_gen[i].set(j);
                     }
-                    block_kill[i]
-                        .set_from(inst.def().iter().flat_map(|def| &def_table[def]).copied());
+                    block_kill[i].set_from(def_table[&def].iter().filter(|&&k| j != k).copied());
                 });
         }
 
@@ -130,7 +94,7 @@ impl ReachingDefAnalysis {
 impl Dataflow for ReachingDefAnalysis {
     const DIRECTION: Direction = Direction::Forward;
 
-    fn boundary_condition(&self) -> BitVector {
+    fn boundary(&self) -> BitVector {
         BitVector::new(self.interner.len())
     }
 
@@ -143,5 +107,72 @@ impl Dataflow for ReachingDefAnalysis {
         output.difference(&self.block_kill[id.0]);
         output.union(&self.block_gen[id.0]);
         output
+    }
+}
+
+pub fn compute_reaching_def<'a>(func: &'a Function) -> ReachingDefResult<'a> {
+    let mut func_clone = func.clone();
+
+    if !func.params.is_empty() {
+        let dummy_block = BasicBlock {
+            id: BlockId(func.basic_blocks.len()),
+            instructions: func
+                .params
+                .iter()
+                .map(|&param| Instruction::Assign {
+                    dst: param,
+                    src: Value::Variable(param),
+                })
+                .collect(),
+        };
+
+        func_clone.cfg.predecessors[0].push(dummy_block.id);
+        func_clone.cfg.predecessors.push(vec![]);
+        func_clone.cfg.successors.push(vec![BlockId(0)]);
+        func_clone.basic_blocks.push(dummy_block);
+    }
+
+    let reaching_def = ReachingDefAnalysis::new(&func_clone);
+    let (block_in, _) = solve(&func_clone, &reaching_def);
+
+    let empty_dataflow_set = || -> Vec<Vec<BitVector>> {
+        func_clone
+            .basic_blocks
+            .iter()
+            .map(|block| {
+                vec![BitVector::new(reaching_def.interner.len()); block.instructions.len()]
+            })
+            .collect()
+    };
+
+    let mut inst_in = empty_dataflow_set();
+    let mut inst_out = empty_dataflow_set();
+
+    for (i, block) in func_clone.basic_blocks.iter().enumerate() {
+        for (j, inst) in block.instructions.iter().enumerate() {
+            inst_in[i][j] = if j == 0 {
+                block_in[i].clone()
+            } else {
+                inst_out[i][j - 1].clone()
+            };
+
+            inst_out[i][j] = inst_in[i][j].clone();
+            if let Some(def) = inst.defs() {
+                let a = reaching_def.interner[inst];
+                inst_out[i][j].reset_from(
+                    reaching_def.def_table[&def]
+                        .iter()
+                        .filter(|&&b| a != b)
+                        .copied(),
+                );
+                inst_out[i][j].set(a);
+            }
+        }
+    }
+
+    ReachingDefResult {
+        func,
+        interner: reaching_def.interner,
+        in_: inst_in,
     }
 }

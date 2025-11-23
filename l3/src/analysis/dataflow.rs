@@ -4,7 +4,7 @@ use l3::*;
 pub trait Dataflow {
     const DIRECTION: Direction;
 
-    fn boundary_condition(&self) -> BitVector;
+    fn boundary(&self) -> BitVector;
 
     fn meet(&self, current: &mut BitVector, other: &BitVector);
 
@@ -17,9 +17,10 @@ pub enum Direction {
     Backward,
 }
 
-pub fn solve<T: Dataflow>(func: &Function, dataflow: &T) -> Vec<BitVector> {
+pub fn solve<T: Dataflow>(func: &Function, dataflow: &T) -> (Vec<BitVector>, Vec<BitVector>) {
     let num_blocks = func.basic_blocks.len();
-    let mut block_sets = vec![dataflow.boundary_condition(); num_blocks];
+    let mut block_enter = vec![dataflow.boundary(); num_blocks];
+    let mut block_exit = vec![dataflow.boundary(); num_blocks];
     let mut worklist = Worklist::new();
 
     match T::DIRECTION {
@@ -30,29 +31,29 @@ pub fn solve<T: Dataflow>(func: &Function, dataflow: &T) -> Vec<BitVector> {
     while let Some(id) = worklist.pop() {
         let i = id.0;
         let cfg = &func.cfg;
-        let mut new_input_set = dataflow.boundary_condition();
 
-        let neighbors_backward = match T::DIRECTION {
+        block_enter[i] = dataflow.boundary();
+
+        let enter_neighbors = match T::DIRECTION {
             Direction::Forward => &cfg.predecessors[i],
             Direction::Backward => &cfg.successors[i],
         };
-
-        for neighbor in neighbors_backward {
-            dataflow.meet(&mut new_input_set, &block_sets[neighbor.0]);
+        for neighbor in enter_neighbors {
+            dataflow.meet(&mut block_enter[i], &block_exit[neighbor.0]);
         }
 
-        let new_output_set = dataflow.transfer(&new_input_set, id);
+        let temp = dataflow.transfer(&block_enter[i], id);
 
-        if new_output_set != new_input_set {
-            block_sets[i] = new_output_set;
+        if temp != block_exit[i] {
+            block_exit[i] = temp;
 
-            let neighbors_forward = match T::DIRECTION {
+            let exit_neighbors = match T::DIRECTION {
                 Direction::Forward => &cfg.successors[i],
                 Direction::Backward => &cfg.predecessors[i],
             };
-            worklist.extend(neighbors_forward.iter().copied());
+            worklist.extend(exit_neighbors.iter().copied());
         }
     }
 
-    block_sets
+    (block_enter, block_exit)
 }

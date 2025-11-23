@@ -29,7 +29,8 @@ fn main() {
 
         for func in &prog.functions {
             println!("{}", func.name.resolved(&prog.interner));
-            println!("{}", compute_liveness(func).resolved(&prog.interner));
+            // println!("{}", compute_liveness(func).resolved(&prog.interner));
+            println!("{}", compute_reaching_def(func).resolved(&prog.interner));
         }
     }
 }

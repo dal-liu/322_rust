@@ -148,7 +148,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn def(&self) -> Option<SymbolId> {
+    pub fn defs(&self) -> Option<SymbolId> {
         use Instruction::*;
 
         match self {
@@ -310,7 +310,7 @@ impl DisplayResolved for Instruction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BlockId,
     pub instructions: Vec<Instruction>,
@@ -328,7 +328,7 @@ impl DisplayResolved for BasicBlock {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct BlockId(pub usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
     pub name: SymbolId,
     pub params: Vec<SymbolId>,
@@ -412,7 +412,7 @@ impl DisplayResolved for Function {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ControlFlowGraph {
     pub predecessors: Vec<Vec<BlockId>>,
     pub successors: Vec<Vec<BlockId>>,
@@ -446,7 +446,7 @@ impl ControlFlowGraph {
 
                     if i < last_index && i + 1 != succ.0 {
                         cfg.successors[i].push(BlockId(i + 1));
-                        cfg.predecessors[i].push(block.id);
+                        cfg.predecessors[i + 1].push(block.id);
                     }
                 }
 

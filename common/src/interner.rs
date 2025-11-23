@@ -62,7 +62,7 @@ impl<T: Clone + Eq + Hash> Interner<T> {
 impl<T: Eq + Hash> Index<&T> for Interner<T> {
     type Output = usize;
 
-    fn index(&self, index: &T) -> &Self::Output {
-        &self.map[index]
+    fn index(&self, item: &T) -> &Self::Output {
+        &self.map[item]
     }
 }

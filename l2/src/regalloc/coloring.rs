@@ -158,23 +158,25 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
             }
         }
 
-        while allocator.simplify_worklist.any()
-            || allocator.worklist_moves.any()
-            || allocator.freeze_worklist.any()
-            || allocator.spill_worklist.any()
+        allocator
+    }
+
+    pub fn allocate(&mut self) {
+        while self.simplify_worklist.any()
+            || self.worklist_moves.any()
+            || self.freeze_worklist.any()
+            || self.spill_worklist.any()
         {
-            if allocator.simplify_worklist.any() {
-                allocator.simplify();
-            } else if allocator.worklist_moves.any() {
-                allocator.coalesce();
-            } else if allocator.freeze_worklist.any() {
-                allocator.freeze();
-            } else if allocator.spill_worklist.any() {
-                allocator.select_spill();
+            if self.simplify_worklist.any() {
+                self.simplify();
+            } else if self.worklist_moves.any() {
+                self.coalesce();
+            } else if self.freeze_worklist.any() {
+                self.freeze();
+            } else if self.spill_worklist.any() {
+                self.select_spill();
             }
         }
-
-        allocator
     }
 
     pub fn assign_colors(mut self) -> ColoringResult {
@@ -196,7 +198,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
 
             for v in &self.interference.graph[u] {
                 if colored_nodes.test(self.get_alias(v)) {
-                    ok_colors.retain(|&c| c != self.color[&self.get_alias(v)]);
+                    ok_colors.retain(|&color| color != self.color[&self.get_alias(v)]);
                 }
             }
 
@@ -472,6 +474,7 @@ pub fn color_graph<'a, 'b>(
     loops: &'a LoopForest,
     prev_spilled: &'b HashSet<Value>,
 ) -> ColoringResult {
-    let allocator = ColoringAllocator::new(func, liveness, interference, loops, prev_spilled);
+    let mut allocator = ColoringAllocator::new(func, liveness, interference, loops, prev_spilled);
+    allocator.allocate();
     allocator.assign_colors()
 }

@@ -1,19 +1,21 @@
 use l3::*;
 
 #[derive(Debug)]
-pub struct Context<'a> {
-    pub instructions: Vec<&'a Instruction>,
+pub struct Context {
+    pub block_id: BlockId,
+    pub inst_ids: Vec<usize>,
 }
 
-pub fn create_contexts<'a>(func: &'a Function) -> Vec<Context<'a>> {
-    let mut contexts = vec![Context {
-        instructions: Vec::new(),
-    }];
+pub fn create_contexts(func: &Function) -> Vec<Context> {
+    let mut contexts = Vec::new();
 
-    func.basic_blocks
-        .iter()
-        .flat_map(|block| &block.instructions)
-        .for_each(|inst| {
+    for block in &func.basic_blocks {
+        contexts.push(Context {
+            block_id: block.id,
+            inst_ids: Vec::new(),
+        });
+
+        for (i, inst) in block.instructions.iter().enumerate() {
             let context = contexts.last_mut().unwrap();
 
             match inst {
@@ -21,23 +23,26 @@ pub fn create_contexts<'a>(func: &'a Function) -> Vec<Context<'a>> {
                 | Instruction::ReturnValue(_)
                 | Instruction::Branch(_)
                 | Instruction::BranchCond { .. } => {
-                    context.instructions.push(inst);
+                    context.inst_ids.push(i);
                     contexts.push(Context {
-                        instructions: Vec::new(),
+                        block_id: block.id,
+                        inst_ids: Vec::new(),
                     });
                 }
 
                 Instruction::Label(_)
                 | Instruction::Call { .. }
                 | Instruction::CallResult { .. } => contexts.push(Context {
-                    instructions: Vec::new(),
+                    block_id: block.id,
+                    inst_ids: Vec::new(),
                 }),
 
-                _ => context.instructions.push(inst),
+                _ => context.inst_ids.push(i),
             }
-        });
+        }
+    }
 
-    contexts.retain(|ctx| !ctx.instructions.is_empty());
+    contexts.retain(|ctx| !ctx.inst_ids.is_empty());
 
     contexts
 }

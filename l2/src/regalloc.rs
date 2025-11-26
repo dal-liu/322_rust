@@ -4,8 +4,8 @@ mod spilling;
 
 use std::collections::HashSet;
 
-use common::Interner;
 use l2::*;
+use utils::Interner;
 
 use crate::analysis::{compute_dominators, compute_liveness, compute_loops};
 
@@ -30,8 +30,7 @@ pub fn allocate_registers(func: &mut Function, interner: &mut Interner<String>) 
             break;
         }
 
-        for var in coloring.spill_nodes {
-            let var = coloring.interner.resolve(var);
+        for var in &coloring.spill_nodes {
             let spilled = spill(func, var, prefix, &mut suffix, interner);
             prev_spilled.extend(spilled.into_iter());
         }
@@ -48,8 +47,8 @@ fn rewrite_program(func: &mut Function, coloring: &ColoringResult) {
                 .chain(inst.uses())
                 .filter(|val| matches!(val, Value::Variable(_)))
                 .for_each(|var| {
-                    let color = coloring.color[&coloring.interner[&var]];
-                    inst.replace_value(&var, coloring.interner.resolve(color));
+                    let color = coloring.color[&var];
+                    inst.replace_value(&var, &color);
                 })
         });
 }

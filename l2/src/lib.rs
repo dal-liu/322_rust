@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use common::{DisplayResolved, Interner};
+use utils::{DisplayResolved, Interner};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 pub enum Register {
     RAX,
     RDI,
@@ -78,7 +78,7 @@ impl fmt::Display for Register {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 pub enum Value {
     Register(Register),
     Number(i64),
@@ -109,7 +109,7 @@ impl DisplayResolved for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 pub struct SymbolId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -644,7 +644,7 @@ pub struct ControlFlowGraph {
 
 impl ControlFlowGraph {
     pub fn new(basic_blocks: &[BasicBlock]) -> Self {
-        let id_map: HashMap<SymbolId, BlockId> = basic_blocks
+        let label_to_block: HashMap<SymbolId, BlockId> = basic_blocks
             .iter()
             .filter_map(|block| {
                 block.instructions.first().and_then(|inst| match inst {
@@ -664,7 +664,7 @@ impl ControlFlowGraph {
         for (i, block) in basic_blocks.iter().enumerate() {
             match block.instructions.last() {
                 Some(Instruction::CJump { label, .. }) => {
-                    let succ = id_map[label];
+                    let succ = label_to_block[label];
                     cfg.successors[i].push(succ);
                     cfg.predecessors[succ.0].push(block.id);
 
@@ -675,7 +675,7 @@ impl ControlFlowGraph {
                 }
 
                 Some(Instruction::Goto(label)) => {
-                    let succ = id_map[label];
+                    let succ = label_to_block[label];
                     cfg.successors[i].push(succ);
                     cfg.predecessors[succ.0].push(block.id);
                 }

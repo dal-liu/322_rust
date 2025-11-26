@@ -3,9 +3,9 @@ mod isel;
 mod parser;
 
 use clap::Parser;
-use common::DisplayResolved;
+use utils::DisplayResolved;
 
-use crate::analysis::{compute_liveness, compute_reaching_def};
+use crate::analysis::{build_def_use, compute_liveness, compute_reaching_def};
 use crate::isel::{create_contexts, generate_forests};
 use crate::parser::parse_file;
 
@@ -28,9 +28,14 @@ fn main() {
         }
 
         for func in &prog.functions {
-            println!("{}", func.name.resolved(&prog.interner));
-            // println!("{}", compute_liveness(func).resolved(&prog.interner));
-            println!("{}", compute_reaching_def(func).resolved(&prog.interner));
+            let liveness = compute_liveness(func);
+            let reaching_def = compute_reaching_def(func);
+            let def_use = build_def_use(func, &reaching_def);
+            let mut contexts = create_contexts(func);
+            let forests = generate_forests(func, &liveness, &def_use, &mut contexts);
+            for forest in &forests {
+                print!("{}", forest.resolved(&prog.interner));
+            }
         }
     }
 }

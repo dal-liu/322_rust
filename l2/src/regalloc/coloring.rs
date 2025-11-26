@@ -1,19 +1,18 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
 
-use common::{BitVector, Interner};
 use l2::*;
+use utils::{BitVector, Interner};
 
 use crate::analysis::{LivenessResult, LoopForest};
 use crate::regalloc::interference::InterferenceGraph;
 
-pub type ValueId = usize;
+type ValueId = usize;
 
 #[derive(Debug)]
-pub struct ColoringResult<'a> {
-    pub color: HashMap<ValueId, ValueId>,
-    pub spill_nodes: BTreeSet<ValueId>,
-    pub interner: &'a Interner<Value>,
+pub struct ColoringResult {
+    pub color: HashMap<Value, Value>,
+    pub spill_nodes: BTreeSet<Value>,
 }
 
 #[derive(Debug)]
@@ -159,28 +158,26 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
             }
         }
 
+        while allocator.simplify_worklist.any()
+            || allocator.worklist_moves.any()
+            || allocator.freeze_worklist.any()
+            || allocator.spill_worklist.any()
+        {
+            if allocator.simplify_worklist.any() {
+                allocator.simplify();
+            } else if allocator.worklist_moves.any() {
+                allocator.coalesce();
+            } else if allocator.freeze_worklist.any() {
+                allocator.freeze();
+            } else if allocator.spill_worklist.any() {
+                allocator.select_spill();
+            }
+        }
+
         allocator
     }
 
-    pub fn allocate(&mut self) {
-        while self.simplify_worklist.any()
-            || self.worklist_moves.any()
-            || self.freeze_worklist.any()
-            || self.spill_worklist.any()
-        {
-            if self.simplify_worklist.any() {
-                self.simplify();
-            } else if self.worklist_moves.any() {
-                self.coalesce();
-            } else if self.freeze_worklist.any() {
-                self.freeze();
-            } else if self.spill_worklist.any() {
-                self.select_spill();
-            }
-        }
-    }
-
-    pub fn assign_colors(mut self) -> ColoringResult<'a> {
+    pub fn assign_colors(mut self) -> ColoringResult {
         let mut colored_nodes = self.colored_nodes.clone();
         colored_nodes.set_from(self.precolored.iter().copied());
 
@@ -215,11 +212,21 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
             self.color.insert(node, self.color[&self.get_alias(node)]);
         }
 
-        ColoringResult {
-            color: self.color,
-            spill_nodes: self.spill_nodes,
-            interner: self.interference.interner,
-        }
+        let value_interner = self.interference.interner;
+
+        let color = self
+            .color
+            .iter()
+            .map(|(&u, &v)| (*value_interner.resolve(u), *value_interner.resolve(v)))
+            .collect();
+
+        let spill_nodes = self
+            .spill_nodes
+            .iter()
+            .map(|&n| *value_interner.resolve(n))
+            .collect();
+
+        ColoringResult { color, spill_nodes }
     }
 
     fn add_edge(&mut self, u: ValueId, v: ValueId) {
@@ -464,8 +471,7 @@ pub fn color_graph<'a, 'b>(
     interference: &'a mut InterferenceGraph<'a>,
     loops: &'a LoopForest,
     prev_spilled: &'b HashSet<Value>,
-) -> ColoringResult<'a> {
-    let mut allocator = ColoringAllocator::new(func, liveness, interference, loops, prev_spilled);
-    allocator.allocate();
+) -> ColoringResult {
+    let allocator = ColoringAllocator::new(func, liveness, interference, loops, prev_spilled);
     allocator.assign_colors()
 }

@@ -1,37 +1,34 @@
 use std::collections::HashMap;
 
-use common::{BitVector, DisplayResolved, Interner};
 use l3::*;
+use utils::{BitVector, DisplayResolved, Interner};
 
-use crate::analysis::dataflow::{Dataflow, Direction, solve};
+use crate::analysis::dataflow::{DataflowFramework, Direction, solve};
 
 type InstId = usize;
 
 #[derive(Debug)]
-pub struct ReachingDefResult<'a> {
-    pub func: &'a Function,
+pub struct ReachingDefResult {
     pub interner: Interner<Instruction>,
     pub in_: Vec<Vec<BitVector>>,
 }
 
-impl<'a> DisplayResolved for ReachingDefResult<'a> {
+impl DisplayResolved for ReachingDefResult {
     fn fmt_with(
         &self,
         f: &mut std::fmt::Formatter,
         interner: &Interner<String>,
     ) -> std::fmt::Result {
-        writeln!(f, "Function \"{}\"", self.func.name.resolved(interner))?;
-
-        for (i, block) in self.func.basic_blocks.iter().enumerate() {
-            for (j, inst) in block.instructions.iter().enumerate() {
-                writeln!(f, "INSTRUCTION: {}\nIN\n{{", inst.resolved(interner))?;
-                for k in &self.in_[i][j] {
-                    writeln!(f, "{}", self.interner.resolve(k).resolved(interner))?;
-                }
-                writeln!(f, "}}")?;
+        for vec in &self.in_ {
+            for bitvec in vec {
+                let mut lines: Vec<String> = bitvec
+                    .iter()
+                    .map(|k| self.interner.resolve(k).resolved(interner).to_string())
+                    .collect();
+                lines.sort();
+                writeln!(f, "IN\n{{\n{}\n}}", lines.join("\n"))?;
             }
         }
-
         Ok(())
     }
 }
@@ -78,7 +75,11 @@ impl ReachingDefAnalysis {
                     if !block_kill[i].test(j) {
                         block_gen[i].set(j);
                     }
-                    block_kill[i].set_from(def_table[&def].iter().filter(|&&k| j != k).copied());
+                    block_kill[i].set_from(
+                        def_table[&def]
+                            .iter()
+                            .filter_map(|&id| (j != id).then_some(id)),
+                    );
                 });
         }
 
@@ -91,7 +92,7 @@ impl ReachingDefAnalysis {
     }
 }
 
-impl Dataflow for ReachingDefAnalysis {
+impl DataflowFramework for ReachingDefAnalysis {
     const DIRECTION: Direction = Direction::Forward;
 
     fn boundary(&self) -> BitVector {
@@ -110,7 +111,7 @@ impl Dataflow for ReachingDefAnalysis {
     }
 }
 
-pub fn compute_reaching_def<'a>(func: &'a Function) -> ReachingDefResult<'a> {
+pub fn compute_reaching_def(func: &Function) -> ReachingDefResult {
     let mut func_clone = func.clone();
 
     if !func.params.is_empty() {
@@ -158,20 +159,18 @@ pub fn compute_reaching_def<'a>(func: &'a Function) -> ReachingDefResult<'a> {
 
             inst_out[i][j] = inst_in[i][j].clone();
             if let Some(def) = inst.defs() {
-                let a = reaching_def.interner[inst];
+                let k = reaching_def.interner[inst];
                 inst_out[i][j].reset_from(
                     reaching_def.def_table[&def]
                         .iter()
-                        .filter(|&&b| a != b)
-                        .copied(),
+                        .filter_map(|&id| (k != id).then_some(id)),
                 );
-                inst_out[i][j].set(a);
+                inst_out[i][j].set(k);
             }
         }
     }
 
     ReachingDefResult {
-        func,
         interner: reaching_def.interner,
         in_: inst_in,
     }

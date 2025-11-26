@@ -1,7 +1,7 @@
 use std::fmt;
 
-use common::{BitVector, DisplayResolved, Interner};
 use l2::*;
+use utils::{BitVector, DisplayResolved, Interner};
 
 use crate::analysis::LivenessResult;
 

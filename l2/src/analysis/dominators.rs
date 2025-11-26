@@ -1,10 +1,10 @@
-use common::{BitVector, Worklist};
 use l2::*;
+use utils::{BitVector, Worklist};
 
 #[derive(Debug)]
 pub struct DominatorTree {
-    pub preorder: Vec<u32>,
-    pub postorder: Vec<u32>,
+    preorder: Vec<u32>,
+    postorder: Vec<u32>,
 }
 
 impl DominatorTree {

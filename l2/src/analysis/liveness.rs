@@ -1,5 +1,5 @@
-use common::{BitVector, DisplayResolved, Interner, Worklist};
 use l2::*;
+use utils::{BitVector, DisplayResolved, Interner, Worklist};
 
 #[derive(Debug)]
 pub struct LivenessResult {

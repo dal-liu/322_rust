@@ -1,12 +1,18 @@
-use common::{BitVector, DisplayResolved, Interner};
 use l3::*;
+use utils::{BitVector, DisplayResolved, Interner};
 
-use crate::analysis::dataflow::{Dataflow, Direction, solve};
+use crate::analysis::dataflow::{DataflowFramework, Direction, solve};
 
 #[derive(Debug)]
 pub struct LivenessResult {
     pub interner: Interner<SymbolId>,
     pub out: Vec<Vec<BitVector>>,
+}
+
+impl LivenessResult {
+    pub fn is_dead_at(&self, b: BlockId, i: usize, var: SymbolId) -> bool {
+        !self.out[b.0][i].test(self.interner[&var])
+    }
 }
 
 impl DisplayResolved for LivenessResult {
@@ -21,7 +27,7 @@ impl DisplayResolved for LivenessResult {
             for bitvec in vec {
                 let mut line: Vec<String> = bitvec
                     .iter()
-                    .map(|val| self.interner.resolve(val).resolved(interner).to_string())
+                    .map(|val| format!("%{}", interner.resolve(self.interner.resolve(val).0)))
                     .collect();
                 line.sort();
                 writeln!(f, "({})", line.join(" "))?;
@@ -75,7 +81,7 @@ impl LivenessAnalysis {
     }
 }
 
-impl Dataflow for LivenessAnalysis {
+impl DataflowFramework for LivenessAnalysis {
     const DIRECTION: Direction = Direction::Backward;
 
     fn boundary(&self) -> BitVector {

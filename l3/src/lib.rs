@@ -3,7 +3,7 @@ use std::fmt;
 use std::hash::Hash;
 use std::iter;
 
-use common::{DisplayResolved, Interner};
+use utils::{DisplayResolved, Interner};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Callee {
@@ -49,12 +49,6 @@ impl DisplayResolved for Value {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct SymbolId(pub usize);
-
-impl DisplayResolved for SymbolId {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
-        write!(f, "{}", interner.resolve(self.0))
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinaryOp {

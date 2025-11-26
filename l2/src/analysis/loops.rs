@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
-use common::BitVector;
 use l2::*;
+use utils::BitVector;
 
 use crate::analysis::dominators::DominatorTree;
 
-pub type LoopId = usize;
+type LoopId = usize;
 
 #[derive(Debug)]
 pub struct LoopForest {
-    pub merged_loops: Vec<Loop>,
-    pub block_map: HashMap<BlockId, LoopId>,
+    merged_loops: Vec<Loop>,
+    block_map: HashMap<BlockId, LoopId>,
 }
 
 impl LoopForest {
@@ -110,10 +110,10 @@ impl LoopForest {
 
 #[derive(Debug, Clone)]
 pub struct Loop {
-    pub header: BlockId,
-    pub basic_blocks: Vec<BlockId>,
-    pub depth: u32,
-    pub children: Vec<LoopId>,
+    header: BlockId,
+    basic_blocks: Vec<BlockId>,
+    depth: u32,
+    children: Vec<LoopId>,
 }
 
 pub fn compute_loops(func: &Function, dt: &DominatorTree) -> LoopForest {

@@ -1,6 +1,6 @@
-use common::Interner;
 use l1;
 use l2::*;
+use utils::Interner;
 
 pub fn translate_program(prog: &Program) -> l1::Program {
     let l1_functions: Vec<l1::Function> = prog

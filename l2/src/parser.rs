@@ -3,8 +3,8 @@ use std::mem;
 
 use ariadne::{Color, Label, Report, ReportKind, sources};
 use chumsky::prelude::*;
-use common::Interner;
 use l2::*;
+use utils::Interner;
 
 type MyExtra<'src> = extra::Full<Rich<'src, char>, extra::SimpleState<Interner<String>>, ()>;
 

@@ -53,9 +53,8 @@ impl Register {
 }
 
 impl fmt::Display for Register {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Register::*;
-
         let reg = match self {
             RAX => "rax",
             RDI => "rdi",
@@ -121,7 +120,7 @@ pub enum ArithmeticOp {
 }
 
 impl fmt::Display for ArithmeticOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let aop = match self {
             Self::AddAssign => "+=",
             Self::SubAssign => "-=",
@@ -139,7 +138,7 @@ pub enum ShiftOp {
 }
 
 impl fmt::Display for ShiftOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sop = match self {
             Self::Shl => "<<=",
             Self::Shr => ">>=",
@@ -156,7 +155,7 @@ pub enum CompareOp {
 }
 
 impl fmt::Display for CompareOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let cmp = match self {
             Self::Lt => "<",
             Self::Le => "<=",
@@ -423,7 +422,6 @@ impl Instruction {
 impl DisplayResolved for Instruction {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         use Instruction::*;
-
         match self {
             Assign { dst, src } => {
                 write!(
@@ -691,7 +689,7 @@ impl ControlFlowGraph {
                     }
                 }
 
-                None => panic!("empty block"),
+                None => unreachable!("empty block"),
             };
         }
 
@@ -707,7 +705,7 @@ pub struct Program {
 }
 
 impl fmt::Display for Program {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "(@{}", self.entry_point)?;
 
         for func in &self.functions {

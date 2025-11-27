@@ -18,27 +18,27 @@ fn translate_register(reg: &Value) -> l1::Register {
     use Register::*;
     use l1::Register as L1;
 
-    if let Value::Register(reg) = reg {
-        match reg {
-            RAX => L1::RAX,
-            RDI => L1::RDI,
-            RSI => L1::RSI,
-            RDX => L1::RDX,
-            R8 => L1::R8,
-            R9 => L1::R9,
-            RCX => L1::RCX,
-            RSP => L1::RSP,
-            R10 => L1::R10,
-            R11 => L1::R11,
-            R12 => L1::R12,
-            R13 => L1::R13,
-            R14 => L1::R14,
-            R15 => L1::R15,
-            RBP => L1::RBP,
-            RBX => L1::RBX,
-        }
-    } else {
-        panic!("not a register");
+    let Value::Register(reg) = reg else {
+        unreachable!("not a register");
+    };
+
+    match reg {
+        RAX => L1::RAX,
+        RDI => L1::RDI,
+        RSI => L1::RSI,
+        RDX => L1::RDX,
+        R8 => L1::R8,
+        R9 => L1::R9,
+        RCX => L1::RCX,
+        RSP => L1::RSP,
+        R10 => L1::R10,
+        R11 => L1::R11,
+        R12 => L1::R12,
+        R13 => L1::R13,
+        R14 => L1::R14,
+        R15 => L1::R15,
+        RBP => L1::RBP,
+        RBX => L1::RBX,
     }
 }
 
@@ -48,7 +48,7 @@ fn translate_value(val: &Value, interner: &Interner<String>) -> l1::Value {
         Value::Number(num) => l1::Value::Number(*num),
         Value::Label(label) => l1::Value::Label(interner.resolve(label.0).to_string()),
         Value::Function(callee) => l1::Value::Function(interner.resolve(callee.0).to_string()),
-        Value::Variable(_) => panic!("variables should not exist"),
+        Value::Variable(_) => unreachable!("variables should not exist"),
     }
 }
 
@@ -113,7 +113,7 @@ fn translate_instruction(
             let l1_aop = match aop {
                 ArithmeticOp::AddAssign => l1::ArithmeticOp::AddAssign,
                 ArithmeticOp::SubAssign => l1::ArithmeticOp::SubAssign,
-                _ => panic!("store arithmetic invalid op"),
+                _ => unreachable!("store arithmetic invalid op"),
             };
             L1::StoreArithmetic {
                 dst: translate_register(dst),
@@ -131,7 +131,7 @@ fn translate_instruction(
             let l1_aop = match aop {
                 ArithmeticOp::AddAssign => l1::ArithmeticOp::AddAssign,
                 ArithmeticOp::SubAssign => l1::ArithmeticOp::SubAssign,
-                _ => panic!("store arithmetic invalid op"),
+                _ => unreachable!("store arithmetic invalid op"),
             };
             L1::LoadArithmetic {
                 dst: translate_register(dst),

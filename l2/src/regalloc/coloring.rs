@@ -421,7 +421,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
                 Instruction::Assign { dst, src } => {
                     value_interner[if value_interner[dst] == u { src } else { dst }]
                 }
-                _ => panic!("not a move"),
+                _ => unreachable!("not a move"),
             };
 
             if self.node_moves(v).is_empty()

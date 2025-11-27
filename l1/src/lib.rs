@@ -21,7 +21,7 @@ pub enum Register {
 }
 
 impl fmt::Display for Register {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Register::*;
 
         let reg = match self {
@@ -55,7 +55,7 @@ pub enum Value {
 }
 
 impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Register(reg) => write!(f, "{}", reg),
             Self::Number(num) => write!(f, "{}", num),
@@ -74,7 +74,7 @@ pub enum ArithmeticOp {
 }
 
 impl fmt::Display for ArithmeticOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = match self {
             Self::AddAssign => "+=",
             Self::SubAssign => "-=",
@@ -92,7 +92,7 @@ pub enum ShiftOp {
 }
 
 impl fmt::Display for ShiftOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = match self {
             Self::Shl => "<<=",
             Self::Shr => ">>=",
@@ -109,7 +109,7 @@ pub enum CompareOp {
 }
 
 impl fmt::Display for CompareOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = match self {
             Self::Lt => "<",
             Self::Le => "<=",
@@ -192,7 +192,7 @@ pub enum Instruction {
 }
 
 impl fmt::Display for Instruction {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Instruction::*;
 
         match self {
@@ -256,7 +256,7 @@ pub struct Function {
 }
 
 impl fmt::Display for Function {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "(@{}\n{} {}", self.name, self.args, self.locals)?;
 
         for inst in &self.instructions {
@@ -274,7 +274,7 @@ pub struct Program {
 }
 
 impl fmt::Display for Program {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "(@{}", self.entry_point)?;
 
         for func in &self.functions {

@@ -61,7 +61,7 @@ pub enum BinaryOp {
 }
 
 impl fmt::Display for BinaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = match self {
             BinaryOp::Add => "+",
             BinaryOp::Sub => "-",
@@ -84,7 +84,7 @@ pub enum CompareOp {
 }
 
 impl fmt::Display for CompareOp {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let cmp = match self {
             Self::Lt => "<",
             Self::Le => "<=",
@@ -474,7 +474,7 @@ pub struct Program {
 }
 
 impl fmt::Display for Program {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for func in &self.functions {
             writeln!(f, "{}", func.resolved(&self.interner))?;
         }

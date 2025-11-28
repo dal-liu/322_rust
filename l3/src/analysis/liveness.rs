@@ -1,3 +1,5 @@
+use std::fmt;
+
 use l3::*;
 use utils::{BitVector, DisplayResolved, Interner};
 
@@ -16,11 +18,7 @@ impl LivenessResult {
 }
 
 impl DisplayResolved for LivenessResult {
-    fn fmt_with(
-        &self,
-        f: &mut std::fmt::Formatter,
-        interner: &Interner<String>,
-    ) -> std::fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         writeln!(f, "(\n(out")?;
 
         for vec in &self.out {

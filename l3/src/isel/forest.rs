@@ -1,5 +1,6 @@
-use l3::*;
 use std::fmt;
+
+use l3::*;
 use utils::{DisplayResolved, Interner};
 
 use crate::analysis::{DefUseChain, LivenessResult};
@@ -53,49 +54,44 @@ impl fmt::Display for OpKind {
 }
 
 #[derive(Debug)]
-pub struct OpSFNode {
-    kind: OpKind,
-    children: Vec<NodeId>,
-    result: Option<SymbolId>,
+pub enum NodeKind {
+    Op {
+        kind: OpKind,
+        result: Option<SymbolId>,
+    },
+    Value(Value),
 }
 
-impl DisplayResolved for OpSFNode {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
-        if let Some(res) = &self.result {
-            write!(f, "{} {}", interner.resolve(res.0), &self.kind)
-        } else {
-            write!(f, "{}", &self.kind)
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ValueSFNode(Value);
-
-impl DisplayResolved for ValueSFNode {
-    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
-        write!(f, "{}", self.0.resolved(interner))
-    }
-}
-
-#[derive(Debug)]
-pub enum SFNode {
-    Op(OpSFNode),
-    Value(ValueSFNode),
-}
-
-impl DisplayResolved for SFNode {
+impl DisplayResolved for NodeKind {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         match self {
-            SFNode::Op(op) => write!(f, "{}", op.resolved(interner)),
-            SFNode::Value(val) => write!(f, "{}", val.resolved(interner)),
+            NodeKind::Op { kind, result } => {
+                let res = result
+                    .and_then(|var| Some(format!("%{} ", interner.resolve(var.0))))
+                    .unwrap_or_else(|| "".to_string());
+                write!(f, "{}{}", res, kind)
+            }
+            NodeKind::Value(val) => write!(f, "{}", val.resolved(interner)),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct Node {
+    kind: NodeKind,
+    parent: Option<NodeId>,
+    children: Vec<NodeId>,
+}
+
+impl DisplayResolved for Node {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
+        write!(f, "{}", &self.kind.resolved(interner))
     }
 }
 
 #[derive(Debug)]
 pub struct SelectionForest {
-    pub arena: Vec<SFNode>,
+    pub arena: Vec<Node>,
     pub roots: Vec<NodeId>,
 }
 
@@ -172,53 +168,41 @@ impl SelectionForest {
         }
     }
 
+    fn alloc(&mut self, node: Node) -> NodeId {
+        let id = self.arena.len();
+        self.arena.push(node);
+        id
+    }
+
     fn make_root(
         &mut self,
         kind: OpKind,
         children: impl IntoIterator<Item = Value>,
         result: Option<SymbolId>,
     ) {
-        let mut alloc = |node| {
-            let id = self.arena.len();
-            self.arena.push(node);
-            id
-        };
-
-        let children = children
+        let children: Vec<NodeId> = children
             .into_iter()
-            .map(|val| alloc(SFNode::Value(ValueSFNode(val))))
+            .map(|val| {
+                self.alloc(Node {
+                    kind: NodeKind::Value(val),
+                    parent: None,
+                    children: Vec::new(),
+                })
+            })
             .collect();
 
-        let op = alloc(SFNode::Op(OpSFNode {
-            kind,
-            children,
-            result,
-        }));
+        let op = self.alloc(Node {
+            kind: NodeKind::Op { kind, result },
+            parent: None,
+            children: children.clone(),
+        });
+
+        for id in children {
+            let node = &mut self.arena[id];
+            node.parent = Some(op);
+        }
 
         self.roots.push(op);
-    }
-
-    fn leaves(&self, root: NodeId) -> Vec<NodeId> {
-        let mut leaves = Vec::new();
-        let mut stack = vec![root];
-        while let Some(id) = stack.pop() {
-            match &self.arena[id] {
-                SFNode::Op(node) => stack.extend(node.children.iter().rev()),
-                SFNode::Value(_) => leaves.push(id),
-            }
-        }
-        leaves
-    }
-
-    fn parent(&self, child: NodeId) -> Option<NodeId> {
-        for (i, node) in self.arena.iter().enumerate() {
-            if let SFNode::Op(op) = node {
-                if op.children.contains(&child) {
-                    return Some(i);
-                }
-            }
-        }
-        None
     }
 
     fn try_merge(
@@ -233,72 +217,90 @@ impl SelectionForest {
         let u = self.roots[i];
         let v = self.roots[j];
 
-        let node1 = match &self.arena[u] {
-            SFNode::Op(node) => {
-                if node.result.is_none() {
-                    return false;
-                }
-                node
-            }
-            SFNode::Value(_) => unreachable!("root should be an op"),
+        let result = match &self.arena[u].kind {
+            NodeKind::Op {
+                result: Some(res), ..
+            } => *res,
+            _ => return false,
         };
 
-        'outer: for leaf in self.leaves(v) {
-            let result = match &self.arena[leaf] {
-                SFNode::Value(ValueSFNode(Value::Variable(var))) if Some(*var) == node1.result => {
-                    *var
-                }
-                _ => continue,
-            };
+        let Some(leaf) = self.matching_leaf(v, result) else {
+            return false;
+        };
 
-            let block = &func.basic_blocks[ctx.block_id.0];
-            let inst1 = &block.instructions[ctx.inst_ids[i]];
-            let inst2 = &block.instructions[ctx.inst_ids[j]];
+        let block = &func.basic_blocks[ctx.block_id.0];
+        let inst1 = &block.instructions[ctx.inst_ids[i]];
+        let inst2 = &block.instructions[ctx.inst_ids[j]];
 
-            if !liveness.is_dead_at(ctx.block_id, ctx.inst_ids[j], result)
-                || def_use.users_of(inst1).as_slice() != [inst2]
-            {
-                continue;
-            }
+        if !liveness.is_dead_at(ctx.block_id, ctx.inst_ids[j], result)
+            || !def_use.is_only_user(inst1, inst2)
+        {
+            return false;
+        }
 
-            for k in i + 1..j {
-                let mid = &block.instructions[ctx.inst_ids[k]];
+        for k in i + 1..j {
+            let mid = &block.instructions[ctx.inst_ids[k]];
 
-                if matches!(inst1, Instruction::Load { .. }) {
+            match inst1 {
+                Instruction::Load { .. } => {
                     if matches!(mid, Instruction::Load { .. })
                         || matches!(mid, Instruction::Store { .. })
                     {
-                        continue 'outer;
+                        return false;
                     }
-                } else {
+                }
+                _ => {
                     if mid.uses().iter().any(|use_| inst1.defs() == Some(*use_))
                         || inst1.uses().iter().any(|use_| mid.defs() == Some(*use_))
                     {
-                        continue 'outer;
+                        return false;
                     }
                 }
             }
-
-            let parent = self.parent(leaf).expect("parent of leaf should exist");
-
-            let SFNode::Op(op) = &mut self.arena[parent] else {
-                unreachable!("parent should be op node");
-            };
-
-            let index = op
-                .children
-                .iter()
-                .position(|&child| child == leaf)
-                .expect("leaf should exist in parent children");
-
-            op.children[index] = u;
-            self.roots.remove(i);
-            ctx.inst_ids.remove(i);
-
-            return true;
         }
 
-        false
+        let parent = self.arena[leaf]
+            .parent
+            .expect("parent of leaf should exist");
+
+        if let Some(id) = self.arena[parent]
+            .children
+            .iter_mut()
+            .find(|&&mut child| child == leaf)
+        {
+            *id = u;
+        } else {
+            unreachable!("leaf should exist in parent children")
+        }
+
+        self.roots.remove(i);
+        ctx.inst_ids.remove(i);
+
+        true
+    }
+
+    fn matching_leaf(&self, root: NodeId, var: SymbolId) -> Option<NodeId> {
+        let mut leaf = None;
+        let mut stack = vec![root];
+
+        while let Some(id) = stack.pop() {
+            let node = &self.arena[id];
+
+            if !node.children.is_empty() {
+                stack.extend(node.children.iter().rev());
+                continue;
+            }
+
+            if leaf.is_some() {
+                return None;
+            }
+
+            if matches!(node.kind, NodeKind::Value(Value::Variable(v)) if v == var) {
+                leaf = Some(id);
+            }
+        }
+
+        leaf
     }
 }
 
@@ -306,14 +308,18 @@ impl DisplayResolved for SelectionForest {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         for &root in &self.roots {
             let mut stack = vec![(root, 0)];
+
             while let Some((id, indent)) = stack.pop() {
                 let node = &self.arena[id];
+
                 writeln!(f, "{}{}", "  ".repeat(indent), node.resolved(interner))?;
-                if let SFNode::Op(op) = node {
-                    stack.extend(op.children.iter().rev().map(|&child| (child, indent + 1)));
+
+                if !node.children.is_empty() {
+                    stack.extend(node.children.iter().rev().map(|&child| (child, indent + 1)));
                 }
             }
         }
+
         Ok(())
     }
 }

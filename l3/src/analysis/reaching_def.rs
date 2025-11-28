@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use l3::*;
 use utils::{BitVector, DisplayResolved, Interner};
@@ -14,19 +15,15 @@ pub struct ReachingDefResult {
 }
 
 impl DisplayResolved for ReachingDefResult {
-    fn fmt_with(
-        &self,
-        f: &mut std::fmt::Formatter,
-        interner: &Interner<String>,
-    ) -> std::fmt::Result {
+    fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         for vec in &self.in_ {
             for bitvec in vec {
                 let mut lines: Vec<String> = bitvec
                     .iter()
-                    .map(|k| self.interner.resolve(k).resolved(interner).to_string())
+                    .map(|k| format!("{}\n", self.interner.resolve(k).resolved(interner)))
                     .collect();
                 lines.sort();
-                writeln!(f, "IN\n{{\n{}\n}}", lines.join("\n"))?;
+                writeln!(f, "IN\n{{\n{}}}", lines.join(""))?;
             }
         }
         Ok(())

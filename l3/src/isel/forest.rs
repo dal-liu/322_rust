@@ -279,7 +279,7 @@ impl SelectionForest {
         true
     }
 
-    fn matching_leaf(&self, root: NodeId, var: SymbolId) -> Option<NodeId> {
+    fn matching_leaf(&self, root: NodeId, target: SymbolId) -> Option<NodeId> {
         let mut leaf = None;
         let mut stack = vec![root];
 
@@ -291,11 +291,10 @@ impl SelectionForest {
                 continue;
             }
 
-            if leaf.is_some() {
-                return None;
-            }
-
-            if matches!(node.kind, NodeKind::Value(Value::Variable(v)) if v == var) {
+            if matches!(&node.kind, NodeKind::Value(Value::Variable(var)) if *var == target) {
+                if leaf.is_some() {
+                    return None;
+                }
                 leaf = Some(id);
             }
         }

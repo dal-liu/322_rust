@@ -3,7 +3,7 @@ use std::fmt;
 use l3::*;
 use utils::{BitVector, DisplayResolved, Interner};
 
-use crate::analysis::dataflow::{DataflowFramework, Direction, solve};
+use crate::analysis::dataflow::{Dataflow, Direction, solve};
 
 #[derive(Debug)]
 pub struct LivenessResult {
@@ -79,7 +79,7 @@ impl LivenessAnalysis {
     }
 }
 
-impl DataflowFramework for LivenessAnalysis {
+impl Dataflow for LivenessAnalysis {
     const DIRECTION: Direction = Direction::Backward;
 
     fn boundary(&self) -> BitVector {

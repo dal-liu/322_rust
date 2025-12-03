@@ -77,13 +77,13 @@ impl DisplayResolved for NodeKind {
 }
 
 #[derive(Debug)]
-pub struct Node {
-    kind: NodeKind,
-    parent: Option<NodeId>,
-    children: Vec<NodeId>,
+pub struct SFNode {
+    pub kind: NodeKind,
+    pub parent: Option<NodeId>,
+    pub children: Vec<NodeId>,
 }
 
-impl DisplayResolved for Node {
+impl DisplayResolved for SFNode {
     fn fmt_with(&self, f: &mut fmt::Formatter, interner: &Interner<String>) -> fmt::Result {
         write!(f, "{}", &self.kind.resolved(interner))
     }
@@ -91,7 +91,7 @@ impl DisplayResolved for Node {
 
 #[derive(Debug)]
 pub struct SelectionForest {
-    pub arena: Vec<Node>,
+    pub arena: Vec<SFNode>,
     pub roots: Vec<NodeId>,
 }
 
@@ -149,7 +149,7 @@ impl SelectionForest {
         forest
     }
 
-    pub fn merge_all(
+    pub fn merge(
         &mut self,
         func: &Function,
         ctx: &mut Context,
@@ -168,7 +168,7 @@ impl SelectionForest {
         }
     }
 
-    fn alloc(&mut self, node: Node) -> NodeId {
+    fn alloc(&mut self, node: SFNode) -> NodeId {
         let id = self.arena.len();
         self.arena.push(node);
         id
@@ -183,7 +183,7 @@ impl SelectionForest {
         let children: Vec<NodeId> = children
             .into_iter()
             .map(|val| {
-                self.alloc(Node {
+                self.alloc(SFNode {
                     kind: NodeKind::Value(val),
                     parent: None,
                     children: Vec::new(),
@@ -191,7 +191,7 @@ impl SelectionForest {
             })
             .collect();
 
-        let op = self.alloc(Node {
+        let op = self.alloc(SFNode {
             kind: NodeKind::Op { kind, result },
             parent: None,
             children: children.clone(),
@@ -216,12 +216,14 @@ impl SelectionForest {
     ) -> bool {
         let u = self.roots[i];
         let v = self.roots[j];
+        let node1 = &self.arena[u];
 
-        let result = match &self.arena[u].kind {
-            NodeKind::Op {
-                result: Some(res), ..
-            } => *res,
-            _ => return false,
+        let &NodeKind::Op {
+            result: Some(result),
+            ..
+        } = &node1.kind
+        else {
+            return false;
         };
 
         let Some(leaf) = self.matching_leaf(v, result) else {
@@ -259,11 +261,11 @@ impl SelectionForest {
             }
         }
 
-        let parent = self.arena[leaf]
+        let leaf_parent = self.arena[leaf]
             .parent
             .expect("parent of leaf should exist");
 
-        if let Some(id) = self.arena[parent]
+        if let Some(id) = self.arena[leaf_parent]
             .children
             .iter_mut()
             .find(|&&mut child| child == leaf)
@@ -273,6 +275,7 @@ impl SelectionForest {
             unreachable!("leaf should exist in parent children")
         }
 
+        self.arena[u].parent = Some(leaf_parent);
         self.roots.remove(i);
         ctx.inst_ids.remove(i);
 
@@ -333,7 +336,7 @@ pub fn generate_forests(
         .iter_mut()
         .map(|ctx| {
             let mut forest = SelectionForest::new(func, ctx);
-            forest.merge_all(func, ctx, liveness, def_use);
+            forest.merge(func, ctx, liveness, def_use);
             forest
         })
         .collect()

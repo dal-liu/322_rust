@@ -4,7 +4,7 @@ use std::fmt;
 use l3::*;
 use utils::{BitVector, DisplayResolved, Interner};
 
-use crate::analysis::dataflow::{DataflowFramework, Direction, solve};
+use crate::analysis::dataflow::{Dataflow, Direction, solve};
 
 type InstId = usize;
 
@@ -89,7 +89,7 @@ impl ReachingDefAnalysis {
     }
 }
 
-impl DataflowFramework for ReachingDefAnalysis {
+impl Dataflow for ReachingDefAnalysis {
     const DIRECTION: Direction = Direction::Forward;
 
     fn boundary(&self) -> BitVector {

@@ -1,7 +1,7 @@
 use l3::*;
 use utils::{BitVector, Worklist};
 
-pub trait DataflowFramework {
+pub trait Dataflow {
     const DIRECTION: Direction;
 
     fn boundary(&self) -> BitVector;
@@ -17,10 +17,7 @@ pub enum Direction {
     Backward,
 }
 
-pub fn solve<T: DataflowFramework>(
-    func: &Function,
-    dataflow: &T,
-) -> (Vec<BitVector>, Vec<BitVector>) {
+pub fn solve<T: Dataflow>(func: &Function, dataflow: &T) -> (Vec<BitVector>, Vec<BitVector>) {
     let num_blocks = func.basic_blocks.len();
     let mut block_enter = vec![dataflow.boundary(); num_blocks];
     let mut block_exit = vec![dataflow.boundary(); num_blocks];

@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+
 use l2;
 use l3::*;
 
@@ -97,7 +99,7 @@ impl TilingSelector {
         let store = Tile::new(pat!(Store(pat!(any), pat!(any)) -> any), 1);
 
         let mut tiles = vec![assign, load, store];
-        tiles.sort_by_key(|tile| (tile.size(), tile.cost));
+        tiles.sort_by_key(|tile| (Reverse(tile.size()), tile.cost));
 
         Self { tiles }
     }

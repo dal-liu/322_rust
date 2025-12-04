@@ -69,9 +69,7 @@ impl DominatorTree {
             match state {
                 TraversalState::Entering => {
                     preorder[node] = counter;
-
                     stack.push((node, TraversalState::Exiting));
-
                     for &child in tree[node].iter().rev() {
                         stack.push((child, TraversalState::Entering));
                     }
@@ -80,7 +78,6 @@ impl DominatorTree {
                     postorder[node] = counter;
                 }
             }
-
             counter += 1;
         }
 

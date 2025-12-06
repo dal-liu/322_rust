@@ -55,31 +55,35 @@ impl DominatorTree {
             }
         }
 
-        enum TraversalState {
-            Entering,
-            Exiting,
-        }
-
         let mut counter = 0;
         let mut preorder = vec![0; num_blocks];
         let mut postorder = vec![0; num_blocks];
-        let mut stack = vec![(entry_id.0, TraversalState::Entering)];
 
-        while let Some((node, state)) = stack.pop() {
-            match state {
-                TraversalState::Entering => {
-                    preorder[node] = counter;
-                    stack.push((node, TraversalState::Exiting));
-                    for &child in tree[node].iter().rev() {
-                        stack.push((child, TraversalState::Entering));
-                    }
-                }
-                TraversalState::Exiting => {
-                    postorder[node] = counter;
-                }
+        fn dfs(
+            node: usize,
+            tree: &[Vec<usize>],
+            counter: &mut u32,
+            preorder: &mut [u32],
+            postorder: &mut [u32],
+        ) {
+            preorder[node] = *counter;
+            *counter += 1;
+
+            for &child in &tree[node] {
+                dfs(child, tree, counter, preorder, postorder);
             }
-            counter += 1;
+
+            postorder[node] = *counter;
+            *counter += 1;
         }
+
+        dfs(
+            entry_id.0,
+            &tree,
+            &mut counter,
+            &mut preorder,
+            &mut postorder,
+        );
 
         Self {
             preorder,

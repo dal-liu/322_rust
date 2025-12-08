@@ -112,7 +112,11 @@ fn arithmetic_op<'src>() -> impl Parser<'src, &'src str, ArithmeticOp, MyExtra<'
 }
 
 fn shift_op<'src>() -> impl Parser<'src, &'src str, ShiftOp, MyExtra<'src>> {
-    choice((just("<<=").to(ShiftOp::Shl), just(">>=").to(ShiftOp::Shr))).padded_by(separators())
+    choice((
+        just("<<=").to(ShiftOp::ShlAssign),
+        just(">>=").to(ShiftOp::ShrAssign),
+    ))
+    .padded_by(separators())
 }
 
 fn compare_op<'src>() -> impl Parser<'src, &'src str, CompareOp, MyExtra<'src>> {

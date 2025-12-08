@@ -87,15 +87,15 @@ impl fmt::Display for ArithmeticOp {
 
 #[derive(Debug, Clone)]
 pub enum ShiftOp {
-    Shl,
-    Shr,
+    ShlAssign,
+    ShrAssign,
 }
 
 impl fmt::Display for ShiftOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let op = match self {
-            Self::Shl => "<<=",
-            Self::Shr => ">>=",
+            Self::ShlAssign => "<<=",
+            Self::ShrAssign => ">>=",
         };
         write!(f, "{}", op)
     }

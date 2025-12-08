@@ -95,8 +95,8 @@ fn translate_instruction(
         }
         Shift { dst, sop, src } => {
             let l1_sop = match sop {
-                ShiftOp::Shl => l1::ShiftOp::Shl,
-                ShiftOp::Shr => l1::ShiftOp::Shr,
+                ShiftOp::ShlAssign => l1::ShiftOp::ShlAssign,
+                ShiftOp::ShrAssign => l1::ShiftOp::ShrAssign,
             };
             L1::Shift {
                 dst: translate_register(dst),

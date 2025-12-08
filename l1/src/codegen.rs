@@ -98,8 +98,8 @@ impl CodeGenerator {
             }
             Shift { dst, sop, src } => {
                 let shift = match sop {
-                    ShiftOp::Shl => "salq",
-                    ShiftOp::Shr => "sarq",
+                    ShiftOp::ShlAssign => "salq",
+                    ShiftOp::ShrAssign => "sarq",
                 };
                 writeln!(
                     self.stream,

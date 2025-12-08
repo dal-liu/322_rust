@@ -24,8 +24,8 @@ pub enum OpKind {
     Gt,
     Load,
     Store,
-    Ret,
-    Br,
+    Return,
+    Branch,
 }
 
 impl fmt::Display for OpKind {
@@ -46,8 +46,8 @@ impl fmt::Display for OpKind {
             Gt => ">",
             Load => "load",
             Store => "store",
-            Ret => "ret",
-            Br => "br",
+            Return => "ret",
+            Branch => "br",
         };
         write!(f, "{}", op)
     }
@@ -55,10 +55,7 @@ impl fmt::Display for OpKind {
 
 #[derive(Debug)]
 pub enum NodeKind {
-    Op {
-        kind: OpKind,
-        result: Option<SymbolId>,
-    },
+    Op { kind: OpKind, result: Option<Value> },
     Value(Value),
 }
 
@@ -67,7 +64,7 @@ impl DisplayResolved for NodeKind {
         match self {
             NodeKind::Op { kind, result } => {
                 let res = result
-                    .and_then(|var| Some(format!("%{} ", interner.resolve(var.0))))
+                    .and_then(|var| Some(format!("{} ", var.resolved(interner))))
                     .unwrap_or_else(|| "".to_string());
                 write!(f, "{}{}", res, kind)
             }
@@ -96,7 +93,7 @@ pub struct SelectionForest {
 }
 
 impl SelectionForest {
-    pub fn new(func: &Function, ctx: &mut Context) -> Self {
+    fn new(func: &Function, ctx: &mut Context) -> Self {
         use Instruction::*;
 
         let mut forest = Self {
@@ -106,7 +103,9 @@ impl SelectionForest {
 
         for &id in &ctx.inst_ids {
             match &func.basic_blocks[ctx.block_id.0].instructions[id] {
-                Assign { dst, src } => forest.make_root(OpKind::Assign, [*src], Some(*dst)),
+                Assign { dst, src } => {
+                    forest.make_root(OpKind::Assign, [*src], Some(Value::Variable(*dst)))
+                }
                 Binary { dst, lhs, op, rhs } => {
                     let op_kind = match op {
                         BinaryOp::Add => OpKind::Add,
@@ -116,7 +115,7 @@ impl SelectionForest {
                         BinaryOp::Shl => OpKind::Shl,
                         BinaryOp::Shr => OpKind::Shr,
                     };
-                    forest.make_root(op_kind, [*lhs, *rhs], Some(*dst))
+                    forest.make_root(op_kind, [*lhs, *rhs], Some(Value::Variable(*dst)))
                 }
                 Compare { dst, lhs, cmp, rhs } => {
                     let cmp_kind = match cmp {
@@ -126,19 +125,21 @@ impl SelectionForest {
                         CompareOp::Ge => OpKind::Ge,
                         CompareOp::Gt => OpKind::Gt,
                     };
-                    forest.make_root(cmp_kind, [*lhs, *rhs], Some(*dst))
+                    forest.make_root(cmp_kind, [*lhs, *rhs], Some(Value::Variable(*dst)))
                 }
-                Load { dst, src } => {
-                    forest.make_root(OpKind::Load, [Value::Variable(*src)], Some(*dst))
-                }
+                Load { dst, src } => forest.make_root(
+                    OpKind::Load,
+                    [Value::Variable(*src)],
+                    Some(Value::Variable(*dst)),
+                ),
                 Store { dst, src } => {
                     forest.make_root(OpKind::Store, [Value::Variable(*dst), *src], None)
                 }
-                Return => forest.make_root(OpKind::Ret, [], None),
-                ReturnValue(val) => forest.make_root(OpKind::Ret, [*val], None),
-                Branch(label) => forest.make_root(OpKind::Br, [Value::Label(*label)], None),
+                Return => forest.make_root(OpKind::Return, [], None),
+                ReturnValue(val) => forest.make_root(OpKind::Return, [*val], None),
+                Branch(label) => forest.make_root(OpKind::Branch, [Value::Label(*label)], None),
                 BranchCond { cond, label } => {
-                    forest.make_root(OpKind::Br, [*cond, Value::Label(*label)], None)
+                    forest.make_root(OpKind::Branch, [*cond, Value::Label(*label)], None)
                 }
                 Label(_) | Call { .. } | CallResult { .. } => {
                     unreachable!("illegal context instruction")
@@ -149,7 +150,7 @@ impl SelectionForest {
         forest
     }
 
-    pub fn merge(
+    fn merge(
         &mut self,
         func: &Function,
         ctx: &mut Context,
@@ -178,7 +179,7 @@ impl SelectionForest {
         &mut self,
         kind: OpKind,
         children: impl IntoIterator<Item = Value>,
-        result: Option<SymbolId>,
+        result: Option<Value>,
     ) {
         let children: Vec<NodeId> = children
             .into_iter()
@@ -219,7 +220,7 @@ impl SelectionForest {
         let node1 = &self.arena[u];
 
         let &NodeKind::Op {
-            result: Some(result),
+            result: Some(Value::Variable(result)),
             ..
         } = &node1.kind
         else {

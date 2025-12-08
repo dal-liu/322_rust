@@ -45,7 +45,7 @@ struct ColoringAllocator<'a, 'b> {
 }
 
 impl<'a, 'b> ColoringAllocator<'a, 'b> {
-    pub fn new(
+    fn new(
         func: &Function,
         liveness: &LivenessResult,
         interference: &'a mut InterferenceGraph<'a>,
@@ -161,7 +161,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         allocator
     }
 
-    pub fn allocate(&mut self) {
+    fn allocate(&mut self) {
         while self.simplify_worklist.any()
             || self.worklist_moves.any()
             || self.freeze_worklist.any()
@@ -179,7 +179,7 @@ impl<'a, 'b> ColoringAllocator<'a, 'b> {
         }
     }
 
-    pub fn assign_colors(mut self) -> ColoringResult {
+    fn assign_colors(mut self) -> ColoringResult {
         let mut colored_nodes = self.colored_nodes.clone();
         colored_nodes.set_from(self.precolored.iter().copied());
 

@@ -6,7 +6,7 @@ use clap::Parser;
 use utils::DisplayResolved;
 
 use crate::analysis::{build_def_use, compute_liveness, compute_reaching_def};
-use crate::isel::{create_contexts, generate_forests};
+use crate::isel::{create_contexts, generate_forests, greedy_match};
 use crate::parser::parse_file;
 
 #[derive(Parser)]
@@ -34,7 +34,8 @@ fn main() {
             let mut contexts = create_contexts(func);
             let forests = generate_forests(func, &liveness, &def_use, &mut contexts);
             for forest in &forests {
-                print!("{}", forest.resolved(&prog.interner));
+                // print!("{}", forest.resolved(&prog.interner));
+                greedy_match(forest);
             }
         }
     }

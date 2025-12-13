@@ -21,15 +21,14 @@ macro_rules! pat {
         }
     };
 
-    (exact) => {
+    (var) => {
         Pattern {
             children: Vec::new(),
             matches: |node, opt| match &node.kind {
                 NodeKind::Op {
-                    result: Some(res), ..
-                } => Some(Value::Variable(*res)) == opt,
+                    result, ..
+                } => *result == opt,
                 NodeKind::Value(val) => Some(*val) == opt,
-                _ => false,
             },
         }
     };
@@ -55,7 +54,7 @@ macro_rules! pat {
         }
     };
 
-    ($kind:ident($($child:expr),*) -> exact) => {
+    ($kind:ident($($child:expr),*) -> var) => {
         Pattern {
             children: vec![$($child),*],
             matches: |node, opt| {
@@ -63,8 +62,8 @@ macro_rules! pat {
                     &node.kind,
                     NodeKind::Op {
                         kind: OpKind::$kind,
-                        result: Some(res)
-                    } if Some(Value::Variable(*res)) == opt
+                        result
+                    } if *result == opt
                 )
             },
         }
@@ -132,235 +131,14 @@ impl Tile {
     }
 }
 
-#[derive(Debug)]
-pub struct TilingSelector {
-    pub tiles: Vec<Tile>,
-}
-
-impl TilingSelector {
-    pub fn new() -> Self {
-        use l2::Instruction as L2;
-
-        let assign = Tile::new(pat!(Assign(pat!(any)) -> any), 1, |forest, root| {
-            vec![L2::Assign {
-                dst: translate_node(forest, root),
-                src: translate_node(forest, forest.arena[root].children[0]),
-            }]
-        });
-
-        let add_assign = Tile::new(pat!(Add(pat!(any), pat!(any)) -> any), 2, |forest, root| {
-            let dst = translate_node(forest, root);
-            vec![
-                L2::Assign {
-                    dst,
-                    src: translate_node(forest, forest.arena[root].children[0]),
-                },
-                L2::Arithmetic {
-                    dst,
-                    aop: l2::ArithmeticOp::AddAssign,
-                    src: translate_node(forest, forest.arena[root].children[1]),
-                },
-            ]
-        });
-
-        let sub_assign = Tile::new(pat!(Sub(pat!(any), pat!(any)) -> any), 2, |forest, root| {
-            let dst = translate_node(forest, root);
-            vec![
-                L2::Assign {
-                    dst,
-                    src: translate_node(forest, forest.arena[root].children[0]),
-                },
-                L2::Arithmetic {
-                    dst,
-                    aop: l2::ArithmeticOp::SubAssign,
-                    src: translate_node(forest, forest.arena[root].children[1]),
-                },
-            ]
-        });
-
-        let mul_assign = Tile::new(pat!(Mul(pat!(any), pat!(any)) -> any), 2, |forest, root| {
-            let dst = translate_node(forest, root);
-            vec![
-                L2::Assign {
-                    dst,
-                    src: translate_node(forest, forest.arena[root].children[0]),
-                },
-                L2::Arithmetic {
-                    dst,
-                    aop: l2::ArithmeticOp::MulAssign,
-                    src: translate_node(forest, forest.arena[root].children[1]),
-                },
-            ]
-        });
-
-        let bit_and_assign = Tile::new(
-            pat!(BitAnd(pat!(any), pat!(any)) -> any),
-            2,
-            |forest, root| {
-                let dst = translate_node(forest, root);
-                vec![
-                    L2::Assign {
-                        dst,
-                        src: translate_node(forest, forest.arena[root].children[0]),
-                    },
-                    L2::Arithmetic {
-                        dst,
-                        aop: l2::ArithmeticOp::BitAndAssign,
-                        src: translate_node(forest, forest.arena[root].children[1]),
-                    },
-                ]
-            },
-        );
-
-        let shl_assign = Tile::new(pat!(Shl(pat!(any), pat!(any)) -> any), 2, |forest, root| {
-            let dst = translate_node(forest, root);
-            vec![
-                L2::Assign {
-                    dst,
-                    src: translate_node(forest, forest.arena[root].children[0]),
-                },
-                L2::Shift {
-                    dst,
-                    sop: l2::ShiftOp::ShlAssign,
-                    src: translate_node(forest, forest.arena[root].children[1]),
-                },
-            ]
-        });
-
-        let shr_assign = Tile::new(pat!(Shr(pat!(any), pat!(any)) -> any), 2, |forest, root| {
-            let dst = translate_node(forest, root);
-            vec![
-                L2::Assign {
-                    dst,
-                    src: translate_node(forest, forest.arena[root].children[0]),
-                },
-                L2::Shift {
-                    dst,
-                    sop: l2::ShiftOp::ShrAssign,
-                    src: translate_node(forest, forest.arena[root].children[1]),
-                },
-            ]
-        });
-
-        let lt = Tile::new(pat!(Lt(pat!(any), pat!(any)) -> any), 1, |forest, root| {
-            vec![L2::Compare {
-                dst: translate_node(forest, root),
-                lhs: translate_node(forest, forest.arena[root].children[0]),
-                cmp: l2::CompareOp::Lt,
-                rhs: translate_node(forest, forest.arena[root].children[1]),
-            }]
-        });
-
-        let le = Tile::new(pat!(Le(pat!(any), pat!(any)) -> any), 1, |forest, root| {
-            vec![L2::Compare {
-                dst: translate_node(forest, root),
-                lhs: translate_node(forest, forest.arena[root].children[0]),
-                cmp: l2::CompareOp::Le,
-                rhs: translate_node(forest, forest.arena[root].children[1]),
-            }]
-        });
-
-        let eq = Tile::new(pat!(Eq(pat!(any), pat!(any)) -> any), 1, |forest, root| {
-            vec![L2::Compare {
-                dst: translate_node(forest, root),
-                lhs: translate_node(forest, forest.arena[root].children[0]),
-                cmp: l2::CompareOp::Eq,
-                rhs: translate_node(forest, forest.arena[root].children[1]),
-            }]
-        });
-
-        let ge = Tile::new(pat!(Ge(pat!(any), pat!(any)) -> any), 1, |forest, root| {
-            vec![L2::Compare {
-                dst: translate_node(forest, root),
-                lhs: translate_node(forest, forest.arena[root].children[1]),
-                cmp: l2::CompareOp::Le,
-                rhs: translate_node(forest, forest.arena[root].children[0]),
-            }]
-        });
-
-        let gt = Tile::new(pat!(Gt(pat!(any), pat!(any)) -> any), 1, |forest, root| {
-            vec![L2::Compare {
-                dst: translate_node(forest, root),
-                lhs: translate_node(forest, forest.arena[root].children[1]),
-                cmp: l2::CompareOp::Lt,
-                rhs: translate_node(forest, forest.arena[root].children[0]),
-            }]
-        });
-
-        let load = Tile::new(pat!(Load(pat!(any)) -> any), 1, |forest, root| {
-            vec![L2::Load {
-                dst: translate_node(forest, root),
-                src: translate_node(forest, forest.arena[root].children[0]),
-                offset: 0,
-            }]
-        });
-
-        let store = Tile::new(pat!(Store(pat!(any), pat!(any))), 1, |forest, root| {
-            vec![L2::Store {
-                dst: translate_node(forest, forest.arena[root].children[0]),
-                offset: 0,
-                src: translate_node(forest, forest.arena[root].children[1]),
-            }]
-        });
-
-        let return_ = Tile::new(pat!(Return), 1, |_, _| vec![L2::Return]);
-
-        let return_value = Tile::new(pat!(Return(pat!(any))), 2, |forest, root| {
-            vec![
-                L2::Assign {
-                    dst: l2::Value::Register(l2::Register::RAX),
-                    src: translate_node(forest, forest.arena[root].children[0]),
-                },
-                L2::Return,
-            ]
-        });
-
-        let branch = Tile::new(pat!(Branch(pat!(any))), 1, |forest, root| {
-            let NodeKind::Value(Value::Label(label)) =
-                forest.arena[forest.arena[root].children[0]].kind
-            else {
-                unreachable!("branch node should have label");
-            };
-            vec![L2::Goto(l2::SymbolId(label.0))]
-        });
-
-        let branch_cond = Tile::new(pat!(Branch(pat!(any), pat!(any))), 1, |forest, root| {
-            let NodeKind::Value(Value::Label(label)) =
-                forest.arena[forest.arena[root].children[1]].kind
-            else {
-                unreachable!("branch node should have label");
-            };
-            vec![L2::CJump {
-                lhs: translate_node(forest, forest.arena[root].children[1]),
-                cmp: l2::CompareOp::Eq,
-                rhs: l2::Value::Number(1),
-                label: l2::SymbolId(label.0),
-            }]
-        });
-
-        let mut tiles = vec![
-            assign,
-            add_assign,
-            sub_assign,
-            mul_assign,
-            bit_and_assign,
-            shl_assign,
-            shr_assign,
-            le,
-            lt,
-            eq,
-            ge,
-            gt,
-            load,
-            store,
-            return_,
-            return_value,
-            branch,
-            branch_cond,
-        ];
-        tiles.sort_by_key(|tile| (Reverse(tile.size()), tile.cost));
-
-        Self { tiles }
+pub fn greedy_match(forest: &SelectionForest) {
+    let tiles = make_tiles();
+    for &root in &forest.roots {
+        let match_tile = tiles
+            .iter()
+            .find(|tile| tile.matches(forest, root))
+            .unwrap();
+        dbg!((match_tile.emit)(forest, root));
     }
 }
 
@@ -379,4 +157,308 @@ fn translate_node(forest: &SelectionForest, id: NodeId) -> l2::Value {
             Value::Variable(var) => l2::Value::Function(l2::SymbolId(var.0)),
         },
     }
+}
+
+fn make_tiles() -> Vec<Tile> {
+    use l2::Instruction as L2;
+
+    let assign = Tile::new(pat!(Assign(pat!(any)) -> any), 1, |forest, root| {
+        vec![L2::Assign {
+            dst: translate_node(forest, root),
+            src: translate_node(forest, forest.arena[root].children[0]),
+        }]
+    });
+
+    let add = Tile::new(pat!(Add(pat!(any), pat!(any)) -> any), 2, |forest, root| {
+        let dst = translate_node(forest, root);
+        vec![
+            L2::Assign {
+                dst,
+                src: translate_node(forest, forest.arena[root].children[0]),
+            },
+            L2::Arithmetic {
+                dst,
+                aop: l2::ArithmeticOp::AddAssign,
+                src: translate_node(forest, forest.arena[root].children[1]),
+            },
+        ]
+    });
+
+    let sub = Tile::new(pat!(Sub(pat!(any), pat!(any)) -> any), 2, |forest, root| {
+        let dst = translate_node(forest, root);
+        vec![
+            L2::Assign {
+                dst,
+                src: translate_node(forest, forest.arena[root].children[0]),
+            },
+            L2::Arithmetic {
+                dst,
+                aop: l2::ArithmeticOp::SubAssign,
+                src: translate_node(forest, forest.arena[root].children[1]),
+            },
+        ]
+    });
+
+    let mul = Tile::new(pat!(Mul(pat!(any), pat!(any)) -> any), 2, |forest, root| {
+        let dst = translate_node(forest, root);
+        vec![
+            L2::Assign {
+                dst,
+                src: translate_node(forest, forest.arena[root].children[0]),
+            },
+            L2::Arithmetic {
+                dst,
+                aop: l2::ArithmeticOp::MulAssign,
+                src: translate_node(forest, forest.arena[root].children[1]),
+            },
+        ]
+    });
+
+    let bit_and = Tile::new(
+        pat!(BitAnd(pat!(any), pat!(any)) -> any),
+        2,
+        |forest, root| {
+            let dst = translate_node(forest, root);
+            vec![
+                L2::Assign {
+                    dst,
+                    src: translate_node(forest, forest.arena[root].children[0]),
+                },
+                L2::Arithmetic {
+                    dst,
+                    aop: l2::ArithmeticOp::BitAndAssign,
+                    src: translate_node(forest, forest.arena[root].children[1]),
+                },
+            ]
+        },
+    );
+
+    let shl = Tile::new(pat!(Shl(pat!(any), pat!(any)) -> any), 2, |forest, root| {
+        let dst = translate_node(forest, root);
+        vec![
+            L2::Assign {
+                dst,
+                src: translate_node(forest, forest.arena[root].children[0]),
+            },
+            L2::Shift {
+                dst,
+                sop: l2::ShiftOp::ShlAssign,
+                src: translate_node(forest, forest.arena[root].children[1]),
+            },
+        ]
+    });
+
+    let shr = Tile::new(pat!(Shr(pat!(any), pat!(any)) -> any), 2, |forest, root| {
+        let dst = translate_node(forest, root);
+        vec![
+            L2::Assign {
+                dst,
+                src: translate_node(forest, forest.arena[root].children[0]),
+            },
+            L2::Shift {
+                dst,
+                sop: l2::ShiftOp::ShrAssign,
+                src: translate_node(forest, forest.arena[root].children[1]),
+            },
+        ]
+    });
+
+    let lt = Tile::new(pat!(Lt(pat!(any), pat!(any)) -> any), 1, |forest, root| {
+        vec![L2::Compare {
+            dst: translate_node(forest, root),
+            lhs: translate_node(forest, forest.arena[root].children[0]),
+            cmp: l2::CompareOp::Lt,
+            rhs: translate_node(forest, forest.arena[root].children[1]),
+        }]
+    });
+
+    let le = Tile::new(pat!(Le(pat!(any), pat!(any)) -> any), 1, |forest, root| {
+        vec![L2::Compare {
+            dst: translate_node(forest, root),
+            lhs: translate_node(forest, forest.arena[root].children[0]),
+            cmp: l2::CompareOp::Le,
+            rhs: translate_node(forest, forest.arena[root].children[1]),
+        }]
+    });
+
+    let eq = Tile::new(pat!(Eq(pat!(any), pat!(any)) -> any), 1, |forest, root| {
+        vec![L2::Compare {
+            dst: translate_node(forest, root),
+            lhs: translate_node(forest, forest.arena[root].children[0]),
+            cmp: l2::CompareOp::Eq,
+            rhs: translate_node(forest, forest.arena[root].children[1]),
+        }]
+    });
+
+    let ge = Tile::new(pat!(Ge(pat!(any), pat!(any)) -> any), 1, |forest, root| {
+        vec![L2::Compare {
+            dst: translate_node(forest, root),
+            lhs: translate_node(forest, forest.arena[root].children[1]),
+            cmp: l2::CompareOp::Le,
+            rhs: translate_node(forest, forest.arena[root].children[0]),
+        }]
+    });
+
+    let gt = Tile::new(pat!(Gt(pat!(any), pat!(any)) -> any), 1, |forest, root| {
+        vec![L2::Compare {
+            dst: translate_node(forest, root),
+            lhs: translate_node(forest, forest.arena[root].children[1]),
+            cmp: l2::CompareOp::Lt,
+            rhs: translate_node(forest, forest.arena[root].children[0]),
+        }]
+    });
+
+    let load = Tile::new(pat!(Load(pat!(any)) -> any), 1, |forest, root| {
+        vec![L2::Load {
+            dst: translate_node(forest, root),
+            src: translate_node(forest, forest.arena[root].children[0]),
+            offset: 0,
+        }]
+    });
+
+    let store = Tile::new(pat!(Store(pat!(any), pat!(any))), 1, |forest, root| {
+        vec![L2::Store {
+            dst: translate_node(forest, forest.arena[root].children[0]),
+            offset: 0,
+            src: translate_node(forest, forest.arena[root].children[1]),
+        }]
+    });
+
+    let return_ = Tile::new(pat!(Return), 1, |_, _| vec![L2::Return]);
+
+    let return_value = Tile::new(pat!(Return(pat!(any))), 2, |forest, root| {
+        vec![
+            L2::Assign {
+                dst: l2::Value::Register(l2::Register::RAX),
+                src: translate_node(forest, forest.arena[root].children[0]),
+            },
+            L2::Return,
+        ]
+    });
+
+    let branch = Tile::new(pat!(Branch(pat!(any))), 1, |forest, root| {
+        let NodeKind::Value(Value::Label(label)) =
+            forest.arena[forest.arena[root].children[0]].kind
+        else {
+            unreachable!("branch node should have label");
+        };
+        vec![L2::Goto(l2::SymbolId(label.0))]
+    });
+
+    let branch_cond = Tile::new(pat!(Branch(pat!(any), pat!(any))), 1, |forest, root| {
+        let NodeKind::Value(Value::Label(label)) =
+            forest.arena[forest.arena[root].children[1]].kind
+        else {
+            unreachable!("branch cond node should have label");
+        };
+        vec![L2::CJump {
+            lhs: translate_node(forest, forest.arena[root].children[1]),
+            cmp: l2::CompareOp::Eq,
+            rhs: l2::Value::Number(1),
+            label: l2::SymbolId(label.0),
+        }]
+    });
+
+    let add_assign_left = Tile::new(pat!(Add(pat!(var), pat!(any)) -> var), 1, |forest, root| {
+        vec![L2::Arithmetic {
+            dst: translate_node(forest, root),
+            aop: l2::ArithmeticOp::AddAssign,
+            src: translate_node(forest, forest.arena[root].children[1]),
+        }]
+    });
+
+    let add_assign_right = Tile::new(pat!(Add(pat!(any), pat!(var)) -> var), 1, |forest, root| {
+        vec![L2::Arithmetic {
+            dst: translate_node(forest, root),
+            aop: l2::ArithmeticOp::AddAssign,
+            src: translate_node(forest, forest.arena[root].children[0]),
+        }]
+    });
+
+    let sub_assign_left = Tile::new(pat!(Sub(pat!(var), pat!(any)) -> var), 1, |forest, root| {
+        vec![L2::Arithmetic {
+            dst: translate_node(forest, root),
+            aop: l2::ArithmeticOp::SubAssign,
+            src: translate_node(forest, forest.arena[root].children[1]),
+        }]
+    });
+
+    let sub_assign_right = Tile::new(pat!(Sub(pat!(any), pat!(var)) -> var), 1, |forest, root| {
+        vec![L2::Arithmetic {
+            dst: translate_node(forest, root),
+            aop: l2::ArithmeticOp::SubAssign,
+            src: translate_node(forest, forest.arena[root].children[0]),
+        }]
+    });
+
+    let mul_assign_left = Tile::new(pat!(Mul(pat!(var), pat!(any)) -> var), 1, |forest, root| {
+        vec![L2::Arithmetic {
+            dst: translate_node(forest, root),
+            aop: l2::ArithmeticOp::MulAssign,
+            src: translate_node(forest, forest.arena[root].children[1]),
+        }]
+    });
+
+    let mul_assign_right = Tile::new(pat!(Mul(pat!(any), pat!(var)) -> var), 1, |forest, root| {
+        vec![L2::Arithmetic {
+            dst: translate_node(forest, root),
+            aop: l2::ArithmeticOp::MulAssign,
+            src: translate_node(forest, forest.arena[root].children[0]),
+        }]
+    });
+
+    let bit_and_assign_left = Tile::new(
+        pat!(BitAnd(pat!(var), pat!(any)) -> var),
+        1,
+        |forest, root| {
+            vec![L2::Arithmetic {
+                dst: translate_node(forest, root),
+                aop: l2::ArithmeticOp::BitAndAssign,
+                src: translate_node(forest, forest.arena[root].children[1]),
+            }]
+        },
+    );
+
+    let bit_and_assign_right = Tile::new(
+        pat!(BitAnd(pat!(any), pat!(var)) -> var),
+        1,
+        |forest, root| {
+            vec![L2::Arithmetic {
+                dst: translate_node(forest, root),
+                aop: l2::ArithmeticOp::BitAndAssign,
+                src: translate_node(forest, forest.arena[root].children[0]),
+            }]
+        },
+    );
+
+    let mut tiles = vec![
+        assign,
+        add,
+        sub,
+        mul,
+        bit_and,
+        shl,
+        shr,
+        le,
+        lt,
+        eq,
+        ge,
+        gt,
+        load,
+        store,
+        return_,
+        return_value,
+        branch,
+        branch_cond,
+        add_assign_left,
+        add_assign_right,
+        sub_assign_left,
+        sub_assign_right,
+        mul_assign_left,
+        mul_assign_right,
+        bit_and_assign_left,
+        bit_and_assign_right,
+    ];
+    tiles.sort_by_key(|tile| (Reverse(tile.size()), tile.cost));
+    tiles
 }
